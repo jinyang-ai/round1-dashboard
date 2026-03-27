@@ -2,10 +2,11 @@
 
 import { useEffect, useState, useMemo, useCallback, useRef, Component, ErrorInfo, ReactNode } from 'react';
 import { 
-  Video, Clock, Search, Copy, Check, Zap, TrendingUp, Users, RefreshCw,
-  Calendar, Building2, Briefcase, ChevronRight, X, ArrowUp, ArrowDown,
-  GitBranch, ArrowRight, Circle, Wifi, WifiOff
+  Video, Search, Copy, Check, Users, RefreshCw, AlertCircle,
+  Calendar, ChevronRight, X, ArrowUp, ArrowDown, Clock,
+  GitBranch, BarChart3, Building2, Briefcase, ChevronDown
 } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 interface Interview {
   id: string;
@@ -29,39 +30,17 @@ interface Toast {
 }
 
 // View component interfaces
-interface TimelineViewProps {
+interface TodayViewProps {
   interviews: Interview[];
+  filtered: Interview[];
   formatDate: (s: string) => string;
   formatTime: (s: string) => string;
   copyToClipboard: (text: string, id: string) => Promise<void>;
   copiedId: string | null;
   onClientClick: (client: string | null) => void;
-}
-
-interface ClientsViewProps {
-  clients: Array<{ name: string; count: number; candidates: number; roles: string[] }>;
-  interviews: Interview[];
-  onSelect: (client: string | null) => void;
-  selected: string | null;
-}
-
-interface CandidatesViewProps {
-  candidates: Array<{
-    name: string;
-    count: number;
-    clients: string[];
-    roles: string[];
-    maxRound: number;
-    lastDate: string;
-  }>;
-  formatDate: (s: string) => string;
-}
-
-interface RolesViewProps {
-  roles: Array<[string, number]>;
-  total: number;
-  onSelect: (role: string | null) => void;
-  selected: string | null;
+  analytics: {
+    candidateList: Array<{ name: string; count: number; clients: string[]; roles: string[]; maxRound: number; lastDate: string }>;
+  };
 }
 
 interface PipelineViewProps {
@@ -79,9 +58,24 @@ interface PipelineViewProps {
     clients: string[];
     maxRound: number;
   }>;
+  candidates: Array<{ name: string; count: number; clients: string[]; roles: string[]; maxRound: number; lastDate: string }>;
   selectedCandidate: string | null;
   onSelectCandidate: (candidate: string | null) => void;
   formatDate: (s: string) => string;
+  onClientClick: (client: string | null) => void;
+}
+
+interface ReportsViewProps {
+  interviews: Interview[];
+  analytics: {
+    total: number;
+    clientList: Array<{ name: string; count: number; candidates: number; roles: string[] }>;
+    roleList: Array<[string, number]>;
+  };
+  onClientSelect: (client: string | null) => void;
+  onRoleSelect: (role: string | null) => void;
+  selectedClient: string | null;
+  selectedRole: string | null;
 }
 
 // Error Boundary for graceful error handling
@@ -131,35 +125,6 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
-// Animated number counter hook
-function useAnimatedNumber(value: number, duration: number = 400) {
-  const [displayValue, setDisplayValue] = useState(0);
-  const prevValue = useRef(0);
-
-  useEffect(() => {
-    const startValue = prevValue.current;
-    const diff = value - startValue;
-    const startTime = performance.now();
-
-    const animate = (currentTime: number) => {
-      const elapsed = currentTime - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setDisplayValue(Math.round(startValue + diff * eased));
-      
-      if (progress < 1) {
-        requestAnimationFrame(animate);
-      } else {
-        prevValue.current = value;
-      }
-    };
-
-    requestAnimationFrame(animate);
-  }, [value, duration]);
-
-  return displayValue;
-}
-
 // Extract round number from title
 function extractRound(title: string): number | null {
   const match = title.match(/(?:R|Round\s*)(\d)/i);
@@ -170,7 +135,6 @@ export default function DashboardPage() {
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
-  const [parsing, setParsing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -183,7 +147,7 @@ export default function DashboardPage() {
   const [selectedClient, setSelectedClient] = useState<string | null>(null);
   const [selectedRole, setSelectedRole] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<'week' | 'month' | 'quarter' | 'all'>('month');
-  const [viewMode, setViewMode] = useState<'timeline' | 'pipeline' | 'clients' | 'candidates' | 'roles'>('timeline');
+  const [viewMode, setViewMode] = useState<'today' | 'pipeline' | 'reports'>('today');
   const [selectedCandidate, setSelectedCandidate] = useState<string | null>(null);
 
   // Toast management
@@ -320,21 +284,6 @@ export default function DashboardPage() {
       addToast('Sync failed', 'warning');
     } finally {
       setSyncing(false);
-    }
-  };
-
-  const parseWithAI = async () => {
-    setParsing(true);
-    try {
-      const res = await fetch('/api/parse-interviews', { method: 'POST' });
-      const data = await res.json();
-      await loadData();
-      addToast(`Parsed ${data.processed || 0} interviews`, 'success');
-    } catch (e) {
-      console.error('Parse failed:', e);
-      addToast('Parse failed', 'warning');
-    } finally {
-      setParsing(false);
     }
   };
 
@@ -573,11 +522,11 @@ export default function DashboardPage() {
             {/* Logo */}
             <div className="flex items-center gap-3">
               <h1 className="text-lg font-semibold tracking-tight">Round1</h1>
-              {/* Live indicator */}
+              {/* Live indicator - no constant pulsing */}
               <div className="flex items-center gap-1.5" title={isConnected ? 'Connected' : isReconnecting ? 'Reconnecting...' : 'Disconnected'}>
-                <div className={`w-1.5 h-1.5 rounded-full ${
-                  isConnected ? 'bg-[#059669] animate-pulse-dot' : 
-                  isReconnecting ? 'bg-amber-500 animate-pulse' : 
+                <div className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                  isConnected ? 'bg-[#059669]' : 
+                  isReconnecting ? 'bg-amber-500' : 
                   'bg-[#6b7280]'
                 }`} />
                 <span className="text-[10px] text-[#6b7280] uppercase tracking-wider">
@@ -612,14 +561,6 @@ export default function DashboardPage() {
                 <RefreshCw size={12} className={syncing ? 'animate-spin' : ''} />
                 Sync
               </button>
-              <button
-                onClick={parseWithAI}
-                disabled={parsing}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-[#059669] text-white hover:bg-[#059669]/90 disabled:opacity-50 transition-colors"
-              >
-                <Zap size={12} className={parsing ? 'animate-pulse' : ''} />
-                {parsing ? 'Parsing...' : 'Parse'}
-              </button>
             </div>
           </div>
         </div>
@@ -627,9 +568,9 @@ export default function DashboardPage() {
 
       {/* Metrics Bar */}
       <div className="border-b border-[#e5e7eb]">
-        <div className="max-w-[1400px] mx-auto px-6 py-5">
+        <div className="max-w-[1400px] mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-12">
+            <div className="flex items-center gap-8">
               <Metric label="Interviews" value={analytics.total} prev={analytics.prevTotal} />
               <Metric label="Candidates" value={analytics.uniqueCandidates} />
               <Metric label="Clients" value={analytics.uniqueClients} />
@@ -653,38 +594,20 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Insights Bar */}
-      {analytics.insights.length > 0 && (
-        <div className="border-b border-[#e5e7eb]">
-          <div className="max-w-[1400px] mx-auto px-6 py-3">
-            <div className="flex items-center gap-6 overflow-x-auto">
-              {analytics.insights.map((insight, idx) => (
-                <div key={idx} className="flex items-center gap-2 text-sm text-[#6b7280] whitespace-nowrap">
-                  <Circle size={4} className="text-[#6b7280] fill-current" />
-                  <span>{insight.text}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Main Content */}
       <main className="max-w-[1400px] mx-auto px-6 py-6">
         {/* View Tabs & Active Filters */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-1">
             {[
-              { id: 'timeline', label: 'Timeline', icon: Calendar },
+              { id: 'today', label: 'Today', icon: Calendar },
               { id: 'pipeline', label: 'Pipeline', icon: GitBranch },
-              { id: 'clients', label: 'Clients', icon: Building2 },
-              { id: 'candidates', label: 'Candidates', icon: Users },
-              { id: 'roles', label: 'Roles', icon: Briefcase },
+              { id: 'reports', label: 'Reports', icon: BarChart3 },
             ].map(tab => (
               <button
                 key={tab.id}
-                onClick={() => setViewMode(tab.id as any)}
-                className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                onClick={() => setViewMode(tab.id as 'today' | 'pipeline' | 'reports')}
+                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
                   viewMode === tab.id 
                     ? 'bg-[#f9fafb] text-[#111827]' 
                     : 'text-[#6b7280] hover:text-[#111827]'
@@ -715,15 +638,17 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Timeline View */}
-        {viewMode === 'timeline' && (
-          <TimelineView 
-            interviews={filtered} 
+        {/* Today View */}
+        {viewMode === 'today' && (
+          <TodayView 
+            interviews={interviews}
+            filtered={filtered}
             formatDate={formatDateFull}
             formatTime={formatTime}
             copyToClipboard={copyToClipboard}
             copiedId={copiedId}
             onClientClick={setSelectedClient}
+            analytics={analytics}
           />
         )}
 
@@ -732,37 +657,23 @@ export default function DashboardPage() {
           <PipelineView 
             pipeline={analytics.pipeline}
             journeys={analytics.journeyList}
+            candidates={analytics.candidateList}
             selectedCandidate={selectedCandidate}
             onSelectCandidate={setSelectedCandidate}
             formatDate={formatDate}
+            onClientClick={setSelectedClient}
           />
         )}
 
-        {/* Clients View */}
-        {viewMode === 'clients' && (
-          <ClientsView 
-            clients={analytics.clientList}
-            interviews={filtered}
-            onSelect={setSelectedClient}
-            selected={selectedClient}
-          />
-        )}
-
-        {/* Candidates View */}
-        {viewMode === 'candidates' && (
-          <CandidatesView 
-            candidates={analytics.candidateList}
-            formatDate={formatDate}
-          />
-        )}
-
-        {/* Roles View */}
-        {viewMode === 'roles' && (
-          <RolesView 
-            roles={analytics.roleList}
-            total={analytics.total}
-            onSelect={setSelectedRole}
-            selected={selectedRole}
+        {/* Reports View */}
+        {viewMode === 'reports' && (
+          <ReportsView 
+            interviews={interviews}
+            analytics={analytics}
+            onClientSelect={setSelectedClient}
+            onRoleSelect={setSelectedRole}
+            selectedClient={selectedClient}
+            selectedRole={selectedRole}
           />
         )}
       </main>
@@ -796,18 +707,17 @@ export default function DashboardPage() {
 
 function Metric({ label, value, prev }: { label: string; value: string | number; prev?: number }) {
   const numValue = typeof value === 'number' ? value : 0;
-  const animatedValue = useAnimatedNumber(numValue);
   const change = prev ? Math.round(((numValue - prev) / prev) * 100) : null;
   
   return (
     <div>
-      <div className="text-3xl font-semibold tabular-nums tracking-tight">
-        {typeof value === 'number' ? animatedValue.toLocaleString() : value}
+      <div className="text-2xl font-semibold tabular-nums tracking-tight">
+        {typeof value === 'number' ? numValue.toLocaleString() : value}
       </div>
       <div className="flex items-center gap-2 mt-0.5">
         <span className="text-xs text-[#6b7280]">{label}</span>
         {change !== null && change !== 0 && (
-          <span className={`flex items-center text-xs ${change > 0 ? 'text-[#059669]' : 'text-[#6b7280]'}`}>
+          <span className={`flex items-center text-xs ${change > 0 ? 'text-[#059669]' : 'text-[#ef4444]'}`}>
             {change > 0 ? <ArrowUp size={10} /> : <ArrowDown size={10} />}
             {Math.abs(change)}%
           </span>
@@ -826,39 +736,74 @@ function FilterPill({ label, onClear }: { label: string; onClear: () => void }) 
   );
 }
 
-function TimelineView({ interviews, formatDate, formatTime, copyToClipboard, copiedId, onClientClick }: TimelineViewProps) {
-  // Group by date
-  const byDate: Record<string, Interview[]> = {};
-  interviews.forEach((i) => {
-    const d = formatDate(i.start_time);
-    if (!byDate[d]) byDate[d] = [];
-    byDate[d].push(i);
-  });
+
+// ============== TODAY VIEW ==============
+function TodayView({ interviews, filtered, formatDate, formatTime, copyToClipboard, copiedId, onClientClick, analytics }: TodayViewProps) {
+  const now = new Date();
+  const in48h = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+  
+  // Upcoming interviews (next 48 hours)
+  const upcoming = useMemo(() => {
+    return interviews
+      .filter(i => {
+        const d = new Date(i.start_time);
+        return d >= now && d <= in48h;
+      })
+      .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+  }, [interviews]);
+
+  // Stale candidates (no activity >7 days, but had recent activity before)
+  const staleCandidates = useMemo(() => {
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    
+    return analytics.candidateList
+      .filter(c => {
+        const lastDate = new Date(c.lastDate);
+        return lastDate < sevenDaysAgo && lastDate > thirtyDaysAgo && c.maxRound < 3;
+      })
+      .slice(0, 8);
+  }, [analytics.candidateList]);
+
+  // Candidates needing R2 scheduling (had R1, no R2 yet, R1 was >3 days ago)
+  const needsScheduling = useMemo(() => {
+    const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+    
+    return analytics.candidateList
+      .filter(c => {
+        const lastDate = new Date(c.lastDate);
+        return c.maxRound === 1 && lastDate < threeDaysAgo && lastDate > new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+      })
+      .slice(0, 8);
+  }, [analytics.candidateList]);
 
   return (
     <div className="space-y-8">
-        {Object.entries(byDate).slice(0, 15).map(([date, items], dateIdx) => (
-          <div 
-            key={date}
-            className="animate-in fade-in slide-in-from-bottom-2"
-            style={{ animationDelay: `${dateIdx * 50}ms`, animationFillMode: 'backwards' }}
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <span className="text-xs font-medium text-[#6b7280]">{date}</span>
-              <span className="text-xs text-[#6b7280] tabular-nums">{items.length}</span>
-            </div>
-            <div className="space-y-1">
-              {items.map((i) => {
+      {/* Upcoming Interviews */}
+      <section>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-medium text-[#111827]">Upcoming (48h)</h2>
+          <span className="text-xs text-[#6b7280] tabular-nums">{upcoming.length} interviews</span>
+        </div>
+        
+        {upcoming.length === 0 ? (
+          <div className="bg-[#f9fafb] border border-[#e5e7eb] rounded-lg p-8 text-center">
+            <div className="text-sm text-[#6b7280]">No interviews in the next 48 hours</div>
+          </div>
+        ) : (
+          <div className="bg-[#f9fafb] border border-[#e5e7eb] rounded-lg divide-y divide-[#e5e7eb]">
+            {upcoming.slice(0, 10).map((i) => {
               const round = extractRound(i.title);
               const meetLink = i.raw_json?.hangoutLink;
+              const isToday = new Date(i.start_time).toDateString() === now.toDateString();
               
               return (
-                <div 
-                  key={i.id} 
-                  className="group grid grid-cols-[60px_1fr_50px_auto] gap-4 items-center px-3 py-2.5 rounded-lg hover:bg-[#f9fafb] transition-colors"
-                >
-                  <div className="text-sm text-[#6b7280] tabular-nums">{formatTime(i.start_time)}</div>
-                  <div className="min-w-0">
+                <div key={i.id} className="group flex items-center gap-4 p-4 hover:bg-white transition-colors">
+                  <div className="w-16 text-center">
+                    <div className="text-xs text-[#6b7280]">{isToday ? 'Today' : formatDate(i.start_time)}</div>
+                    <div className="text-sm font-medium tabular-nums">{formatTime(i.start_time)}</div>
+                  </div>
+                  <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <button 
                         onClick={() => onClientClick(i.client)}
@@ -866,28 +811,27 @@ function TimelineView({ interviews, formatDate, formatTime, copyToClipboard, cop
                       >
                         {i.client || 'Unknown'}
                       </button>
-                      {i.role_type && (
-                        <span className="text-xs text-[#6b7280]">{i.role_type}</span>
-                      )}
-                      {round && round > 1 && (
-                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                          round >= 3 ? 'text-amber-400 bg-amber-500/10' : 'text-[#059669] bg-[#059669]/10'
-                        }`}>R{round}</span>
+                      {round && (
+                        <span 
+                          className="text-[10px] font-medium px-1.5 py-0.5 rounded text-[#059669]"
+                          style={{ backgroundColor: `rgba(5, 150, 105, ${round >= 2 ? 0.2 : 0.1})` }}
+                        >
+                          R{round}
+                        </span>
                       )}
                     </div>
                     <div className="text-sm text-[#6b7280] truncate">{i.candidate_name || i.title}</div>
                   </div>
-                  <div className="text-xs text-[#6b7280] tabular-nums text-right">{i.duration_mins}m</div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() => copyToClipboard(`${i.client} - ${i.candidate_name}`, i.id)}
                       className="p-1.5 text-[#6b7280] hover:text-[#111827] rounded transition-colors"
                     >
-                      {copiedId === i.id ? <Check size={12} className="text-[#059669]" /> : <Copy size={12} />}
+                      {copiedId === i.id ? <Check size={14} className="text-[#059669]" /> : <Copy size={14} />}
                     </button>
                     {meetLink && (
                       <a href={meetLink} target="_blank" rel="noopener noreferrer" className="p-1.5 text-[#6b7280] hover:text-[#111827] rounded transition-colors">
-                        <Video size={12} />
+                        <Video size={14} />
                       </a>
                     )}
                   </div>
@@ -895,137 +839,134 @@ function TimelineView({ interviews, formatDate, formatTime, copyToClipboard, cop
               );
             })}
           </div>
-        </div>
-      ))}
-    </div>
-  );
-}
+        )}
+      </section>
 
-function ClientsView({ clients, onSelect, selected }: ClientsViewProps) {
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-      {clients.filter((c) => c.name !== 'Unknown').map((client, idx) => (
-        <button
-          key={client.name}
-          onClick={() => onSelect(selected === client.name ? null : client.name)}
-          className={`text-left p-4 rounded-lg border transition-colors ${
-            selected === client.name 
-              ? 'bg-[#059669]/5 border-[#059669]/30' 
-              : 'bg-[#f9fafb] border-[#e5e7eb] hover:border-[#d1d5db]'
-          }`}
-          style={{ animationDelay: `${idx * 30}ms` }}
-        >
-          <div className="flex items-start justify-between mb-2">
-            <h3 className="text-sm font-medium text-[#111827]">{client.name}</h3>
-            <div className="text-xl font-semibold tabular-nums">{client.count}</div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Needs Scheduling */}
+        <section>
+          <div className="flex items-center gap-2 mb-4">
+            <AlertCircle size={14} className="text-[#059669]" />
+            <h2 className="text-sm font-medium text-[#111827]">Needs R2 Scheduling</h2>
           </div>
-          <div className="text-xs text-[#6b7280] mb-2">{client.candidates} candidates</div>
-          <div className="flex flex-wrap gap-1">
-            {client.roles.slice(0, 2).map((r: string) => (
-              <span key={r} className="text-[10px] text-[#6b7280] bg-[#e5e7eb] px-1.5 py-0.5 rounded">{r}</span>
-            ))}
-            {client.roles.length > 2 && (
-              <span className="text-[10px] text-[#6b7280]">+{client.roles.length - 2}</span>
-            )}
-          </div>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function CandidatesView({ candidates, formatDate }: CandidatesViewProps) {
-  return (
-    <div className="space-y-1">
-      {candidates.slice(0, 50).map((c, idx) => (
-        <div 
-          key={c.name} 
-          className="group grid grid-cols-[40px_1fr_auto_60px_70px] gap-4 items-center p-3 rounded-lg hover:bg-[#f9fafb] transition-colors"
-          style={{ animationDelay: `${idx * 20}ms` }}
-        >
-          <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-medium ${
-            c.maxRound >= 3 ? 'bg-amber-500/10 text-amber-400' :
-            c.maxRound >= 2 ? 'bg-[#059669]/10 text-[#059669]' :
-            'bg-[#e5e7eb] text-[#6b7280]'
-          }`}>
-            {c.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-[#111827]">{c.name}</span>
-              {c.maxRound > 1 && (
-                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                  c.maxRound >= 3 ? 'text-amber-400 bg-amber-500/10' : 'text-[#059669] bg-[#059669]/10'
-                }`}>
-                  R{c.maxRound}
-                </span>
-              )}
+          
+          {needsScheduling.length === 0 ? (
+            <div className="bg-[#f9fafb] border border-[#e5e7eb] rounded-lg p-6 text-center">
+              <div className="text-sm text-[#6b7280]">All caught up</div>
             </div>
-            <div className="text-xs text-[#6b7280]">
-              {c.clients.slice(0, 2).join(', ')}
-              {c.clients.length > 2 && ` +${c.clients.length - 2}`}
+          ) : (
+            <div className="bg-[#f9fafb] border border-[#e5e7eb] rounded-lg divide-y divide-[#e5e7eb]">
+              {needsScheduling.map((c) => (
+                <div key={c.name} className="flex items-center justify-between p-4">
+                  <div>
+                    <div className="text-sm font-medium text-[#111827]">{c.name}</div>
+                    <div className="text-xs text-[#6b7280]">{c.clients.join(', ')}</div>
+                  </div>
+                  <div className="text-xs text-[#6b7280] tabular-nums">
+                    R1: {formatDate(c.lastDate)}
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
-          <div className="hidden sm:flex gap-1">
-            {c.roles.slice(0, 2).map((r: string) => (
-              <span key={r} className="text-[10px] text-[#6b7280] bg-[#e5e7eb] px-1.5 py-0.5 rounded">{r}</span>
-            ))}
-          </div>
-          <div className="text-right">
-            <div className="text-sm font-medium tabular-nums">{c.count}</div>
-            <div className="text-[10px] text-[#6b7280]">interviews</div>
-          </div>
-          <div className="text-xs text-[#6b7280] text-right tabular-nums">{formatDate(c.lastDate)}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
+          )}
+        </section>
 
-function RolesView({ roles, total, onSelect, selected }: RolesViewProps) {
-  const maxCount = roles[0]?.[1] || 1;
-  
-  return (
-    <div className="space-y-2">
-      {roles.map(([role, count]) => {
-        const pct = Math.round((count / total) * 100);
-        const barPct = (count / maxCount) * 100;
+        {/* Stale Candidates */}
+        <section>
+          <div className="flex items-center gap-2 mb-4">
+            <Clock size={14} className="text-amber-500" />
+            <h2 className="text-sm font-medium text-[#111827]">Stale ({'>'}7 days)</h2>
+          </div>
+          
+          {staleCandidates.length === 0 ? (
+            <div className="bg-[#f9fafb] border border-[#e5e7eb] rounded-lg p-6 text-center">
+              <div className="text-sm text-[#6b7280]">No stale candidates</div>
+            </div>
+          ) : (
+            <div className="bg-[#f9fafb] border border-[#e5e7eb] rounded-lg divide-y divide-[#e5e7eb]">
+              {staleCandidates.map((c) => (
+                <div key={c.name} className="flex items-center justify-between p-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-[#111827]">{c.name}</span>
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-[#059669]/10 text-[#059669]">
+                        R{c.maxRound}
+                      </span>
+                    </div>
+                    <div className="text-xs text-[#6b7280]">{c.clients.join(', ')}</div>
+                  </div>
+                  <div className="text-xs text-amber-600 tabular-nums">
+                    {Math.floor((now.getTime() - new Date(c.lastDate).getTime()) / (24 * 60 * 60 * 1000))}d ago
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+
+      {/* Recent Activity */}
+      <section>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-medium text-[#111827]">Recent Activity</h2>
+        </div>
         
-        return (
-          <button
-            key={role}
-            onClick={() => onSelect(selected === role ? null : role)}
-            className={`w-full text-left p-4 rounded-lg border transition-colors ${
-              selected === role 
-                ? 'bg-[#059669]/5 border-[#059669]/30' 
-                : 'bg-[#f9fafb] border-[#e5e7eb] hover:border-[#d1d5db]'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-[#111827]">{role}</span>
-              <div className="flex items-center gap-2">
-                <span className="text-lg font-semibold tabular-nums">{count}</span>
-                <span className="text-xs text-[#6b7280]">{pct}%</span>
+        <div className="space-y-1">
+          {filtered.slice(0, 15).map((i) => {
+            const round = extractRound(i.title);
+            const meetLink = i.raw_json?.hangoutLink;
+            
+            return (
+              <div key={i.id} className="group flex items-center gap-4 px-3 py-2.5 rounded-lg hover:bg-[#f9fafb] transition-colors">
+                <div className="w-20 text-xs text-[#6b7280] tabular-nums">{formatDate(i.start_time)}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => onClientClick(i.client)}
+                      className="text-sm font-medium text-[#111827] hover:text-[#059669] transition-colors"
+                    >
+                      {i.client || 'Unknown'}
+                    </button>
+                    {round && (
+                      <span 
+                        className="text-[10px] font-medium px-1.5 py-0.5 rounded text-[#059669]"
+                        style={{ backgroundColor: `rgba(5, 150, 105, ${round >= 2 ? 0.2 : 0.1})` }}
+                      >
+                        R{round}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-sm text-[#6b7280] truncate">{i.candidate_name || i.title}</div>
+                </div>
+                <div className="text-xs text-[#6b7280] tabular-nums">{i.duration_mins}m</div>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={() => copyToClipboard(`${i.client} - ${i.candidate_name}`, i.id)}
+                    className="p-1.5 text-[#6b7280] hover:text-[#111827] rounded transition-colors"
+                  >
+                    {copiedId === i.id ? <Check size={12} className="text-[#059669]" /> : <Copy size={12} />}
+                  </button>
+                  {meetLink && (
+                    <a href={meetLink} target="_blank" rel="noopener noreferrer" className="p-1.5 text-[#6b7280] hover:text-[#111827] rounded transition-colors">
+                      <Video size={12} />
+                    </a>
+                  )}
+                </div>
               </div>
-            </div>
-            <div className="h-1 bg-[#e5e7eb] rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-[#059669] rounded-full transition-all duration-500"
-                style={{ width: `${barPct}%` }}
-              />
-            </div>
-          </button>
-        );
-      })}
+            );
+          })}
+        </div>
+      </section>
     </div>
   );
 }
 
-function PipelineView({ pipeline, journeys, selectedCandidate, onSelectCandidate, formatDate }: PipelineViewProps) {
+// ============== PIPELINE VIEW ==============
+function PipelineView({ pipeline, journeys, candidates, selectedCandidate, onSelectCandidate, formatDate, onClientClick }: PipelineViewProps) {
   const stages = [
-    { label: 'Round 1', count: pipeline.r1, color: 'bg-[#6b7280]' },
-    { label: 'Round 2', count: pipeline.r2, color: 'bg-[#059669]' },
-    { label: 'Round 3+', count: pipeline.r3, color: 'bg-amber-500' },
+    { label: 'Round 1', count: pipeline.r1, pct: 100 },
+    { label: 'Round 2', count: pipeline.r2, pct: pipeline.r1 > 0 ? Math.round((pipeline.r2 / pipeline.r1) * 100) : 0 },
+    { label: 'Round 3+', count: pipeline.r3, pct: pipeline.r2 > 0 ? Math.round((pipeline.r3 / pipeline.r2) * 100) : 0 },
   ];
 
   const maxCount = Math.max(...stages.map(s => s.count), 1);
@@ -1033,62 +974,49 @@ function PipelineView({ pipeline, journeys, selectedCandidate, onSelectCandidate
   return (
     <div className="space-y-8">
       {/* Funnel */}
-      <div className="bg-[#f9fafb] border border-[#e5e7eb] rounded-lg p-6">
-        <h3 className="text-xs font-medium text-[#6b7280] uppercase tracking-wider mb-6">Pipeline</h3>
+      <div className="bg-[#f9fafb] border border-[#e5e7eb] rounded-lg p-4">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-medium text-[#111827]">Conversion Funnel</h3>
+          <div className="flex items-center gap-4 text-xs text-[#6b7280]">
+            <span>R1→R2: <span className="font-medium text-[#059669]">{pipeline.r1to2}%</span></span>
+            <span>R2→R3: <span className="font-medium text-amber-500">{pipeline.r2to3}%</span></span>
+          </div>
+        </div>
         
-        <div className="space-y-4">
+        <div className="space-y-3">
           {stages.map((stage, idx) => {
             const widthPct = (stage.count / maxCount) * 100;
-            const conversionFromPrev = idx === 0 ? null : 
-              stages[idx - 1].count > 0 ? Math.round((stage.count / stages[idx - 1].count) * 100) : 0;
+            const opacity = 1 - (idx * 0.25);
             
             return (
-              <div key={stage.label} className="flex items-center gap-4">
-                <div className="w-16 text-xs text-[#6b7280] text-right">{stage.label}</div>
-                <div className="flex-1">
-                  <div className="h-8 bg-[#e5e7eb] rounded overflow-hidden">
-                    <div 
-                      className={`h-full ${stage.color} rounded flex items-center justify-end pr-3 transition-all duration-700`}
-                      style={{ width: `${Math.max(widthPct, 8)}%` }}
-                    >
-                      <span className="text-sm font-semibold text-white tabular-nums">{stage.count}</span>
-                    </div>
+              <div key={stage.label} className="flex items-center gap-3">
+                <div className="w-14 text-xs text-[#6b7280] text-right">{stage.label}</div>
+                <div className="flex-1 h-8 bg-[#e5e7eb] rounded overflow-hidden">
+                  <div 
+                    className="h-full bg-[#059669] rounded flex items-center justify-end pr-3 transition-all duration-500"
+                    style={{ width: `${Math.max(widthPct, 10)}%`, opacity }}
+                  >
+                    <span className="text-sm font-medium text-white tabular-nums">{stage.count}</span>
                   </div>
                 </div>
-                {conversionFromPrev !== null && (
-                  <div className="w-14 text-xs text-[#6b7280] tabular-nums">
-                    {conversionFromPrev}%
-                  </div>
-                )}
+                <div className="w-10 text-xs text-[#6b7280] tabular-nums">
+                  {idx > 0 ? `${stage.pct}%` : ''}
+                </div>
               </div>
             );
           })}
         </div>
-
-        <div className="mt-6 pt-4 border-t border-[#e5e7eb] grid grid-cols-3 gap-4">
-          <div className="text-center">
-            <div className="text-2xl font-semibold tabular-nums">{pipeline.r1}</div>
-            <div className="text-xs text-[#6b7280]">Total</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-semibold tabular-nums text-[#059669]">{pipeline.r1to2}%</div>
-            <div className="text-xs text-[#6b7280]">R1 to R2</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-semibold tabular-nums text-amber-400">{pipeline.r2to3}%</div>
-            <div className="text-xs text-[#6b7280]">R2 to R3</div>
-          </div>
-        </div>
       </div>
 
-      {/* Journeys */}
+      {/* Candidate Journeys */}
       <div>
-        <h3 className="text-xs font-medium text-[#6b7280] uppercase tracking-wider mb-4">
-          Journeys ({journeys.length})
-        </h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-medium text-[#111827]">Candidate Journeys</h3>
+          <span className="text-xs text-[#6b7280]">{journeys.length} candidates</span>
+        </div>
         
         <div className="space-y-2">
-          {journeys.slice(0, 20).map((journey) => {
+          {journeys.slice(0, 25).map((journey) => {
             const isExpanded = selectedCandidate === journey.name;
             
             return (
@@ -1103,37 +1031,28 @@ function PipelineView({ pipeline, journeys, selectedCandidate, onSelectCandidate
                   className="w-full p-4 flex items-center justify-between"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-[#e5e7eb] flex items-center justify-center text-xs font-medium text-[#6b7280]">
+                    <div 
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium text-[#059669]"
+                      style={{ backgroundColor: `rgba(5, 150, 105, ${journey.maxRound >= 2 ? 0.2 : 0.1})` }}
+                    >
                       {journey.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
                     </div>
                     <div className="text-left">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium text-[#111827]">{journey.name}</span>
-                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                          journey.maxRound >= 3 ? 'bg-amber-500/10 text-amber-400' :
-                          journey.maxRound >= 2 ? 'bg-[#059669]/10 text-[#059669]' :
-                          'bg-[#e5e7eb] text-[#6b7280]'
-                        }`}>
+                        <span 
+                          className="text-[10px] font-medium px-1.5 py-0.5 rounded text-[#059669]"
+                          style={{ backgroundColor: `rgba(5, 150, 105, ${journey.maxRound >= 2 ? 0.2 : 0.1})` }}
+                        >
                           R{journey.maxRound}
                         </span>
                       </div>
-                      <div className="text-xs text-[#6b7280]">
-                        {journey.clients.join(', ')}
-                      </div>
+                      <div className="text-xs text-[#6b7280]">{journey.clients.join(', ')}</div>
                     </div>
                   </div>
                   
                   <div className="flex items-center gap-2">
-                    {journey.interviews.slice(0, 4).map((int, i) => (
-                      <div 
-                        key={i}
-                        className={`w-1.5 h-1.5 rounded-full ${
-                          int.round >= 3 ? 'bg-amber-400' :
-                          int.round >= 2 ? 'bg-[#059669]' :
-                          'bg-[#6b7280]'
-                        }`}
-                      />
-                    ))}
+                    <span className="text-xs text-[#6b7280] tabular-nums">{journey.interviews.length} interviews</span>
                     <ChevronRight 
                       size={14} 
                       className={`text-[#6b7280] transition-transform ${isExpanded ? 'rotate-90' : ''}`} 
@@ -1146,26 +1065,26 @@ function PipelineView({ pipeline, journeys, selectedCandidate, onSelectCandidate
                     <div className="relative pl-6 border-l border-[#e5e7eb] ml-4 space-y-3">
                       {journey.interviews.map((int, i) => (
                         <div key={i} className="relative">
-                          <div className={`absolute -left-[13px] w-2 h-2 rounded-full ${
-                            int.round >= 3 ? 'bg-amber-400' :
-                            int.round >= 2 ? 'bg-[#059669]' :
-                            'bg-[#6b7280]'
-                          }`} />
-                          <div className="bg-[#ffffff] rounded p-3">
+                          <div className={`absolute -left-[13px] w-2 h-2 rounded-full bg-[#059669]`} style={{ opacity: 0.3 + (int.round * 0.2) }} />
+                          <div className="bg-white rounded p-3 border border-[#e5e7eb]">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <span className="text-sm text-[#111827]">{int.client}</span>
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                                  int.round >= 3 ? 'bg-amber-500/10 text-amber-400' :
-                                  int.round >= 2 ? 'bg-[#059669]/10 text-[#059669]' :
-                                  'bg-[#e5e7eb] text-[#6b7280]'
-                                }`}>
+                                <button 
+                                  onClick={() => onClientClick(int.client)}
+                                  className="text-sm text-[#111827] hover:text-[#059669] transition-colors"
+                                >
+                                  {int.client}
+                                </button>
+                                <span 
+                                  className="text-[10px] px-1.5 py-0.5 rounded text-[#059669]"
+                                  style={{ backgroundColor: `rgba(5, 150, 105, ${int.round >= 2 ? 0.2 : 0.1})` }}
+                                >
                                   R{int.round}
                                 </span>
                               </div>
                               <span className="text-xs text-[#6b7280] tabular-nums">{formatDate(int.date)}</span>
                             </div>
-                            <div className="text-xs text-[#6b7280] mt-1">{int.role}</div>
+                            {int.role && <div className="text-xs text-[#6b7280] mt-1">{int.role}</div>}
                           </div>
                         </div>
                       ))}
@@ -1175,6 +1094,189 @@ function PipelineView({ pipeline, journeys, selectedCandidate, onSelectCandidate
               </div>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============== REPORTS VIEW ==============
+function ReportsView({ interviews, analytics, onClientSelect, onRoleSelect, selectedClient, selectedRole }: ReportsViewProps) {
+  // Monthly trends
+  const monthlyData = useMemo(() => {
+    const months: Record<string, { month: string; interviews: number; candidates: Set<string> }> = {};
+    const now = new Date();
+    
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = d.toISOString().slice(0, 7);
+      const label = d.toLocaleDateString('en-IN', { month: 'short' });
+      months[key] = { month: label, interviews: 0, candidates: new Set() };
+    }
+    
+    interviews.forEach(i => {
+      const key = i.start_time.slice(0, 7);
+      if (months[key]) {
+        months[key].interviews++;
+        if (i.candidate_name) months[key].candidates.add(i.candidate_name);
+      }
+    });
+    
+    return Object.values(months).map(m => ({
+      month: m.month,
+      interviews: m.interviews,
+      candidates: m.candidates.size
+    }));
+  }, [interviews]);
+
+  // Interviewer workload
+  const { interviewerList, maxInterviewerCount } = useMemo(() => {
+    const interviewers: Record<string, number> = {};
+    interviews.forEach(i => {
+      i.interviewer_names?.forEach(name => {
+        if (name && name !== 'Unknown') {
+          interviewers[name] = (interviewers[name] || 0) + 1;
+        }
+      });
+    });
+    const sorted = Object.entries(interviewers)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([name, count]) => ({ name: name.split(' ')[0], fullName: name, count }));
+    return { interviewerList: sorted, maxInterviewerCount: sorted[0]?.count || 1 };
+  }, [interviews]);
+
+  // Time to schedule (average days between R1 and R2)
+  const avgTimeToR2 = useMemo(() => {
+    const candidateR1: Record<string, Date> = {};
+    const gaps: number[] = [];
+    
+    interviews.forEach(i => {
+      if (!i.candidate_name) return;
+      const round = extractRound(i.title);
+      const date = new Date(i.start_time);
+      
+      if (round === 1 && !candidateR1[i.candidate_name]) {
+        candidateR1[i.candidate_name] = date;
+      } else if (round === 2 && candidateR1[i.candidate_name]) {
+        const gap = Math.floor((date.getTime() - candidateR1[i.candidate_name].getTime()) / (24 * 60 * 60 * 1000));
+        if (gap > 0 && gap < 60) gaps.push(gap);
+      }
+    });
+    
+    return gaps.length > 0 ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length) : null;
+  }, [interviews]);
+
+  return (
+    <div className="space-y-6">
+      {/* Key Metrics */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-[#f9fafb] border border-[#e5e7eb] rounded-lg p-4">
+          <div className="text-2xl font-semibold tabular-nums">{analytics.total}</div>
+          <div className="text-xs text-[#6b7280]">Total Interviews</div>
+        </div>
+        <div className="bg-[#f9fafb] border border-[#e5e7eb] rounded-lg p-4">
+          <div className="text-2xl font-semibold tabular-nums">{analytics.clientList.length}</div>
+          <div className="text-xs text-[#6b7280]">Active Clients</div>
+        </div>
+        <div className="bg-[#f9fafb] border border-[#e5e7eb] rounded-lg p-4">
+          <div className="text-2xl font-semibold tabular-nums">{interviewerList.length}</div>
+          <div className="text-xs text-[#6b7280]">Interviewers</div>
+        </div>
+        <div className="bg-[#f9fafb] border border-[#e5e7eb] rounded-lg p-4">
+          <div className="text-2xl font-semibold tabular-nums">{avgTimeToR2 ?? '—'}</div>
+          <div className="text-xs text-[#6b7280]">Avg Days R1→R2</div>
+        </div>
+      </div>
+
+      {/* Monthly Trends */}
+      <div className="bg-[#f9fafb] border border-[#e5e7eb] rounded-lg p-4">
+        <h3 className="text-sm font-medium text-[#111827] mb-4">Monthly Trends</h3>
+        <div className="h-48">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={monthlyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} />
+              <Tooltip
+                contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '12px' }}
+              />
+              <Bar dataKey="interviews" fill="#059669" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Interviewer Workload */}
+        <div className="bg-[#f9fafb] border border-[#e5e7eb] rounded-lg p-4">
+          <h3 className="text-sm font-medium text-[#111827] mb-4">Interviewer Workload</h3>
+          <div className="space-y-2">
+            {interviewerList.length === 0 ? (
+              <div className="text-sm text-[#6b7280]">No data</div>
+            ) : interviewerList.map((interviewer) => (
+              <div key={interviewer.fullName} className="flex items-center gap-3">
+                <div className="w-20 text-xs text-[#6b7280] truncate" title={interviewer.fullName}>
+                  {interviewer.name}
+                </div>
+                <div className="flex-1 h-5 bg-[#e5e7eb] rounded overflow-hidden">
+                  <div 
+                    className="h-full bg-[#059669] rounded flex items-center justify-end pr-2"
+                    style={{ width: `${(interviewer.count / maxInterviewerCount) * 100}%` }}
+                  >
+                    {interviewer.count >= 5 && (
+                      <span className="text-[10px] font-medium text-white">{interviewer.count}</span>
+                    )}
+                  </div>
+                </div>
+                {interviewer.count < 5 && (
+                  <span className="text-xs text-[#6b7280] tabular-nums w-6">{interviewer.count}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Client Breakdown */}
+        <div className="bg-[#f9fafb] border border-[#e5e7eb] rounded-lg p-4">
+          <h3 className="text-sm font-medium text-[#111827] mb-4">Client Activity</h3>
+          <div className="space-y-2">
+            {analytics.clientList.filter(c => c.name !== 'Unknown').slice(0, 8).map((client) => (
+              <button
+                key={client.name}
+                onClick={() => onClientSelect(selectedClient === client.name ? null : client.name)}
+                className={`w-full flex items-center justify-between p-2 rounded transition-colors ${
+                  selectedClient === client.name ? 'bg-[#059669]/10' : 'hover:bg-white'
+                }`}
+              >
+                <span className="text-sm text-[#111827]">{client.name}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-[#6b7280]">{client.candidates} candidates</span>
+                  <span className="text-sm font-medium tabular-nums">{client.count}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Role Breakdown */}
+      <div className="bg-[#f9fafb] border border-[#e5e7eb] rounded-lg p-4">
+        <h3 className="text-sm font-medium text-[#111827] mb-4">Role Distribution</h3>
+        <div className="flex flex-wrap gap-2">
+          {analytics.roleList.slice(0, 12).map(([role, count]) => (
+            <button
+              key={role}
+              onClick={() => onRoleSelect(selectedRole === role ? null : role)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-colors ${
+                selectedRole === role 
+                  ? 'bg-[#059669]/10 border-[#059669]/30 text-[#059669]' 
+                  : 'border-[#e5e7eb] hover:border-[#d1d5db] text-[#111827]'
+              }`}
+            >
+              <span className="text-sm">{role}</span>
+              <span className="text-xs text-[#6b7280] tabular-nums">{count}</span>
+            </button>
+          ))}
         </div>
       </div>
     </div>

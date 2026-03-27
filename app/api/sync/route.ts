@@ -2,13 +2,35 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fetchIncrementalChanges } from '@/lib/calendar';
 import { getSyncState, saveSyncState, processIncrementalChanges, bulkUpsertInterviews } from '@/lib/db';
 
+// GET for cron jobs
+export async function GET(request: NextRequest) {
+  // Verify cron secret in production
+  const cronSecret = process.env.CRON_SECRET;
+  const authHeader = request.headers.get('authorization');
+  
+  // In production, require CRON_SECRET to be configured
+  if (process.env.NODE_ENV === 'production' && !cronSecret) {
+    console.error('CRON_SECRET not configured in production');
+    return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
+  }
+  
+  // Verify auth if secret is set
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  
+  return runSync(false);
+}
+
 export async function POST(request: NextRequest) {
+  const url = new URL(request.url);
+  const forceFullSync = url.searchParams.get('full') === 'true';
+  return runSync(forceFullSync);
+}
+
+async function runSync(forceFullSync: boolean) {
   try {
     const calendarId = process.env.GOOGLE_CALENDAR_ID || 'round1@grapevine.in';
-    
-    // Check for force full sync parameter
-    const url = new URL(request.url);
-    const forceFullSync = url.searchParams.get('full') === 'true';
     
     // Get current sync state
     const syncState = await getSyncState();
