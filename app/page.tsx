@@ -112,13 +112,13 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   render() {
     if (this.state.hasError) {
       return this.props.fallback || (
-        <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+        <div className="min-h-screen bg-[#ffffff] flex items-center justify-center">
           <div className="text-center p-6">
-            <div className="text-[#fafafa] text-lg font-medium mb-2">Something went wrong</div>
-            <div className="text-[#71717a] text-sm mb-4">{this.state.error?.message || 'An unexpected error occurred'}</div>
+            <div className="text-[#111827] text-lg font-medium mb-2">Something went wrong</div>
+            <div className="text-[#6b7280] text-sm mb-4">{this.state.error?.message || 'An unexpected error occurred'}</div>
             <button
               onClick={() => window.location.reload()}
-              className="px-4 py-2 bg-[#22c55e] text-[#0a0a0a] text-sm font-medium rounded-lg hover:bg-[#22c55e]/90 transition-colors"
+              className="px-4 py-2 bg-[#059669] text-white text-sm font-medium rounded-lg hover:bg-[#059669]/90 transition-colors"
             >
               Reload Page
             </button>
@@ -555,8 +555,8 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
-        <div className="text-[#71717a]">Loading...</div>
+      <div className="min-h-screen bg-[#ffffff] flex items-center justify-center">
+        <div className="text-[#6b7280]">Loading...</div>
       </div>
     );
   }
@@ -565,9 +565,9 @@ export default function DashboardPage() {
 
   return (
     <ErrorBoundary>
-    <div className="min-h-screen bg-[#0a0a0a] text-[#fafafa]">
+    <div className="min-h-screen bg-[#ffffff] text-[#111827]">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-[#0a0a0a]/95 backdrop-blur-sm border-b border-[#1c1c1f]">
+      <header className="sticky top-0 z-50 bg-[#ffffff]/95 backdrop-blur-sm border-b border-[#e5e7eb]">
         <div className="max-w-[1400px] mx-auto px-6 py-4">
           <div className="flex items-center justify-between gap-8">
             {/* Logo */}
@@ -576,11 +576,11 @@ export default function DashboardPage() {
               {/* Live indicator */}
               <div className="flex items-center gap-1.5" title={isConnected ? 'Connected' : isReconnecting ? 'Reconnecting...' : 'Disconnected'}>
                 <div className={`w-1.5 h-1.5 rounded-full ${
-                  isConnected ? 'bg-[#22c55e] animate-pulse-dot' : 
+                  isConnected ? 'bg-[#059669] animate-pulse-dot' : 
                   isReconnecting ? 'bg-amber-500 animate-pulse' : 
-                  'bg-[#71717a]'
+                  'bg-[#6b7280]'
                 }`} />
-                <span className="text-[10px] text-[#71717a] uppercase tracking-wider">
+                <span className="text-[10px] text-[#6b7280] uppercase tracking-wider">
                   {isConnected ? 'Live' : isReconnecting ? 'Reconnecting...' : 'Offline'}
                 </span>
               </div>
@@ -588,16 +588,16 @@ export default function DashboardPage() {
 
             {/* Search */}
             <div className="flex-1 max-w-sm relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#71717a]" />
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6b7280]" />
               <input
                 ref={searchRef}
                 type="text"
                 placeholder="Search..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-12 py-2 bg-[#111113] border border-[#1c1c1f] rounded-lg text-sm placeholder-[#71717a] focus:outline-none focus:border-[#22c55e]/50 transition-colors"
+                className="w-full pl-9 pr-12 py-2 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg text-sm placeholder-[#6b7280] focus:outline-none focus:border-[#059669]/50 transition-colors"
               />
-              <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-[#71717a] bg-[#1c1c1f] px-1.5 py-0.5 rounded">
+              <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-[#6b7280] bg-[#e5e7eb] px-1.5 py-0.5 rounded">
                 ⌘K
               </kbd>
             </div>
@@ -607,7 +607,7 @@ export default function DashboardPage() {
               <button
                 onClick={syncCalendar}
                 disabled={syncing}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-[#1c1c1f] text-[#71717a] hover:text-[#fafafa] hover:border-[#2a2a2f] disabled:opacity-50 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-[#e5e7eb] text-[#6b7280] hover:text-[#111827] hover:border-[#d1d5db] disabled:opacity-50 transition-colors"
               >
                 <RefreshCw size={12} className={syncing ? 'animate-spin' : ''} />
                 Sync
@@ -615,7 +615,7 @@ export default function DashboardPage() {
               <button
                 onClick={parseWithAI}
                 disabled={parsing}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-[#22c55e] text-[#0a0a0a] hover:bg-[#22c55e]/90 disabled:opacity-50 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-[#059669] text-white hover:bg-[#059669]/90 disabled:opacity-50 transition-colors"
               >
                 <Zap size={12} className={parsing ? 'animate-pulse' : ''} />
                 {parsing ? 'Parsing...' : 'Parse'}
@@ -626,7 +626,7 @@ export default function DashboardPage() {
       </header>
 
       {/* Metrics Bar */}
-      <div className="border-b border-[#1c1c1f]">
+      <div className="border-b border-[#e5e7eb]">
         <div className="max-w-[1400px] mx-auto px-6 py-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-12">
@@ -642,7 +642,7 @@ export default function DashboardPage() {
                   key={r}
                   onClick={() => setDateRange(r)}
                   className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
-                    dateRange === r ? 'bg-[#111113] text-[#fafafa]' : 'text-[#71717a] hover:text-[#fafafa]'
+                    dateRange === r ? 'bg-[#f9fafb] text-[#111827]' : 'text-[#6b7280] hover:text-[#111827]'
                   }`}
                 >
                   {r === 'week' ? '7D' : r === 'month' ? '30D' : r === 'quarter' ? '90D' : 'All'}
@@ -655,12 +655,12 @@ export default function DashboardPage() {
 
       {/* Insights Bar */}
       {analytics.insights.length > 0 && (
-        <div className="border-b border-[#1c1c1f]">
+        <div className="border-b border-[#e5e7eb]">
           <div className="max-w-[1400px] mx-auto px-6 py-3">
             <div className="flex items-center gap-6 overflow-x-auto">
               {analytics.insights.map((insight, idx) => (
-                <div key={idx} className="flex items-center gap-2 text-sm text-[#71717a] whitespace-nowrap">
-                  <Circle size={4} className="text-[#71717a] fill-current" />
+                <div key={idx} className="flex items-center gap-2 text-sm text-[#6b7280] whitespace-nowrap">
+                  <Circle size={4} className="text-[#6b7280] fill-current" />
                   <span>{insight.text}</span>
                 </div>
               ))}
@@ -686,8 +686,8 @@ export default function DashboardPage() {
                 onClick={() => setViewMode(tab.id as any)}
                 className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
                   viewMode === tab.id 
-                    ? 'bg-[#111113] text-[#fafafa]' 
-                    : 'text-[#71717a] hover:text-[#fafafa]'
+                    ? 'bg-[#f9fafb] text-[#111827]' 
+                    : 'text-[#6b7280] hover:text-[#111827]'
                 }`}
               >
                 <tab.icon size={14} />
@@ -707,7 +707,7 @@ export default function DashboardPage() {
               )}
               <button
                 onClick={() => { setSelectedClient(null); setSelectedRole(null); setSearchQuery(''); }}
-                className="text-xs text-[#71717a] hover:text-[#fafafa] transition-colors"
+                className="text-xs text-[#6b7280] hover:text-[#111827] transition-colors"
               >
                 Clear
               </button>
@@ -772,17 +772,17 @@ export default function DashboardPage() {
         {toasts.map(toast => (
           <div
             key={toast.id}
-            className={`flex items-center gap-3 px-4 py-3 bg-[#111113] border border-[#1c1c1f] rounded-lg shadow-xl ${
+            className={`flex items-center gap-3 px-4 py-3 bg-[#f9fafb] border border-[#e5e7eb] rounded-lg shadow-xl ${
               toast.exiting ? 'toast-exit' : 'toast-enter'
             }`}
           >
-            {toast.type === 'success' && <div className="w-1.5 h-1.5 rounded-full bg-[#22c55e]" />}
+            {toast.type === 'success' && <div className="w-1.5 h-1.5 rounded-full bg-[#059669]" />}
             {toast.type === 'warning' && <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />}
-            {toast.type === 'info' && <div className="w-1.5 h-1.5 rounded-full bg-[#71717a]" />}
-            <span className="text-sm text-[#fafafa]">{toast.message}</span>
+            {toast.type === 'info' && <div className="w-1.5 h-1.5 rounded-full bg-[#6b7280]" />}
+            <span className="text-sm text-[#111827]">{toast.message}</span>
             <button
               onClick={() => dismissToast(toast.id)}
-              className="ml-2 text-[#71717a] hover:text-[#fafafa] transition-colors"
+              className="ml-2 text-[#6b7280] hover:text-[#111827] transition-colors"
             >
               <X size={14} />
             </button>
@@ -805,9 +805,9 @@ function Metric({ label, value, prev }: { label: string; value: string | number;
         {typeof value === 'number' ? animatedValue.toLocaleString() : value}
       </div>
       <div className="flex items-center gap-2 mt-0.5">
-        <span className="text-xs text-[#71717a]">{label}</span>
+        <span className="text-xs text-[#6b7280]">{label}</span>
         {change !== null && change !== 0 && (
-          <span className={`flex items-center text-xs ${change > 0 ? 'text-[#22c55e]' : 'text-[#71717a]'}`}>
+          <span className={`flex items-center text-xs ${change > 0 ? 'text-[#059669]' : 'text-[#6b7280]'}`}>
             {change > 0 ? <ArrowUp size={10} /> : <ArrowDown size={10} />}
             {Math.abs(change)}%
           </span>
@@ -819,9 +819,9 @@ function Metric({ label, value, prev }: { label: string; value: string | number;
 
 function FilterPill({ label, onClear }: { label: string; onClear: () => void }) {
   return (
-    <div className="flex items-center gap-1.5 px-2 py-1 bg-[#111113] border border-[#1c1c1f] rounded text-xs text-[#fafafa]">
+    <div className="flex items-center gap-1.5 px-2 py-1 bg-[#f9fafb] border border-[#e5e7eb] rounded text-xs text-[#111827]">
       {label}
-      <button onClick={onClear} className="text-[#71717a] hover:text-[#fafafa] transition-colors"><X size={12} /></button>
+      <button onClick={onClear} className="text-[#6b7280] hover:text-[#111827] transition-colors"><X size={12} /></button>
     </div>
   );
 }
@@ -844,8 +844,8 @@ function TimelineView({ interviews, formatDate, formatTime, copyToClipboard, cop
             style={{ animationDelay: `${dateIdx * 50}ms`, animationFillMode: 'backwards' }}
           >
             <div className="flex items-center gap-3 mb-4">
-              <span className="text-xs font-medium text-[#71717a]">{date}</span>
-              <span className="text-xs text-[#71717a] tabular-nums">{items.length}</span>
+              <span className="text-xs font-medium text-[#6b7280]">{date}</span>
+              <span className="text-xs text-[#6b7280] tabular-nums">{items.length}</span>
             </div>
             <div className="space-y-1">
               {items.map((i) => {
@@ -855,38 +855,38 @@ function TimelineView({ interviews, formatDate, formatTime, copyToClipboard, cop
               return (
                 <div 
                   key={i.id} 
-                  className="group grid grid-cols-[60px_1fr_50px_auto] gap-4 items-center px-3 py-2.5 rounded-lg hover:bg-[#111113] transition-colors"
+                  className="group grid grid-cols-[60px_1fr_50px_auto] gap-4 items-center px-3 py-2.5 rounded-lg hover:bg-[#f9fafb] transition-colors"
                 >
-                  <div className="text-sm text-[#71717a] tabular-nums">{formatTime(i.start_time)}</div>
+                  <div className="text-sm text-[#6b7280] tabular-nums">{formatTime(i.start_time)}</div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <button 
                         onClick={() => onClientClick(i.client)}
-                        className="text-sm font-medium text-[#fafafa] hover:text-[#22c55e] transition-colors"
+                        className="text-sm font-medium text-[#111827] hover:text-[#059669] transition-colors"
                       >
                         {i.client || 'Unknown'}
                       </button>
                       {i.role_type && (
-                        <span className="text-xs text-[#71717a]">{i.role_type}</span>
+                        <span className="text-xs text-[#6b7280]">{i.role_type}</span>
                       )}
                       {round && round > 1 && (
                         <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                          round >= 3 ? 'text-amber-400 bg-amber-500/10' : 'text-[#22c55e] bg-[#22c55e]/10'
+                          round >= 3 ? 'text-amber-400 bg-amber-500/10' : 'text-[#059669] bg-[#059669]/10'
                         }`}>R{round}</span>
                       )}
                     </div>
-                    <div className="text-sm text-[#71717a] truncate">{i.candidate_name || i.title}</div>
+                    <div className="text-sm text-[#6b7280] truncate">{i.candidate_name || i.title}</div>
                   </div>
-                  <div className="text-xs text-[#71717a] tabular-nums text-right">{i.duration_mins}m</div>
+                  <div className="text-xs text-[#6b7280] tabular-nums text-right">{i.duration_mins}m</div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() => copyToClipboard(`${i.client} - ${i.candidate_name}`, i.id)}
-                      className="p-1.5 text-[#71717a] hover:text-[#fafafa] rounded transition-colors"
+                      className="p-1.5 text-[#6b7280] hover:text-[#111827] rounded transition-colors"
                     >
-                      {copiedId === i.id ? <Check size={12} className="text-[#22c55e]" /> : <Copy size={12} />}
+                      {copiedId === i.id ? <Check size={12} className="text-[#059669]" /> : <Copy size={12} />}
                     </button>
                     {meetLink && (
-                      <a href={meetLink} target="_blank" rel="noopener noreferrer" className="p-1.5 text-[#71717a] hover:text-[#fafafa] rounded transition-colors">
+                      <a href={meetLink} target="_blank" rel="noopener noreferrer" className="p-1.5 text-[#6b7280] hover:text-[#111827] rounded transition-colors">
                         <Video size={12} />
                       </a>
                     )}
@@ -910,22 +910,22 @@ function ClientsView({ clients, onSelect, selected }: ClientsViewProps) {
           onClick={() => onSelect(selected === client.name ? null : client.name)}
           className={`text-left p-4 rounded-lg border transition-colors ${
             selected === client.name 
-              ? 'bg-[#22c55e]/5 border-[#22c55e]/30' 
-              : 'bg-[#111113] border-[#1c1c1f] hover:border-[#2a2a2f]'
+              ? 'bg-[#059669]/5 border-[#059669]/30' 
+              : 'bg-[#f9fafb] border-[#e5e7eb] hover:border-[#d1d5db]'
           }`}
           style={{ animationDelay: `${idx * 30}ms` }}
         >
           <div className="flex items-start justify-between mb-2">
-            <h3 className="text-sm font-medium text-[#fafafa]">{client.name}</h3>
+            <h3 className="text-sm font-medium text-[#111827]">{client.name}</h3>
             <div className="text-xl font-semibold tabular-nums">{client.count}</div>
           </div>
-          <div className="text-xs text-[#71717a] mb-2">{client.candidates} candidates</div>
+          <div className="text-xs text-[#6b7280] mb-2">{client.candidates} candidates</div>
           <div className="flex flex-wrap gap-1">
             {client.roles.slice(0, 2).map((r: string) => (
-              <span key={r} className="text-[10px] text-[#71717a] bg-[#1c1c1f] px-1.5 py-0.5 rounded">{r}</span>
+              <span key={r} className="text-[10px] text-[#6b7280] bg-[#e5e7eb] px-1.5 py-0.5 rounded">{r}</span>
             ))}
             {client.roles.length > 2 && (
-              <span className="text-[10px] text-[#71717a]">+{client.roles.length - 2}</span>
+              <span className="text-[10px] text-[#6b7280]">+{client.roles.length - 2}</span>
             )}
           </div>
         </button>
@@ -940,42 +940,42 @@ function CandidatesView({ candidates, formatDate }: CandidatesViewProps) {
       {candidates.slice(0, 50).map((c, idx) => (
         <div 
           key={c.name} 
-          className="group grid grid-cols-[40px_1fr_auto_60px_70px] gap-4 items-center p-3 rounded-lg hover:bg-[#111113] transition-colors"
+          className="group grid grid-cols-[40px_1fr_auto_60px_70px] gap-4 items-center p-3 rounded-lg hover:bg-[#f9fafb] transition-colors"
           style={{ animationDelay: `${idx * 20}ms` }}
         >
           <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-medium ${
             c.maxRound >= 3 ? 'bg-amber-500/10 text-amber-400' :
-            c.maxRound >= 2 ? 'bg-[#22c55e]/10 text-[#22c55e]' :
-            'bg-[#1c1c1f] text-[#71717a]'
+            c.maxRound >= 2 ? 'bg-[#059669]/10 text-[#059669]' :
+            'bg-[#e5e7eb] text-[#6b7280]'
           }`}>
             {c.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-[#fafafa]">{c.name}</span>
+              <span className="text-sm font-medium text-[#111827]">{c.name}</span>
               {c.maxRound > 1 && (
                 <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                  c.maxRound >= 3 ? 'text-amber-400 bg-amber-500/10' : 'text-[#22c55e] bg-[#22c55e]/10'
+                  c.maxRound >= 3 ? 'text-amber-400 bg-amber-500/10' : 'text-[#059669] bg-[#059669]/10'
                 }`}>
                   R{c.maxRound}
                 </span>
               )}
             </div>
-            <div className="text-xs text-[#71717a]">
+            <div className="text-xs text-[#6b7280]">
               {c.clients.slice(0, 2).join(', ')}
               {c.clients.length > 2 && ` +${c.clients.length - 2}`}
             </div>
           </div>
           <div className="hidden sm:flex gap-1">
             {c.roles.slice(0, 2).map((r: string) => (
-              <span key={r} className="text-[10px] text-[#71717a] bg-[#1c1c1f] px-1.5 py-0.5 rounded">{r}</span>
+              <span key={r} className="text-[10px] text-[#6b7280] bg-[#e5e7eb] px-1.5 py-0.5 rounded">{r}</span>
             ))}
           </div>
           <div className="text-right">
             <div className="text-sm font-medium tabular-nums">{c.count}</div>
-            <div className="text-[10px] text-[#71717a]">interviews</div>
+            <div className="text-[10px] text-[#6b7280]">interviews</div>
           </div>
-          <div className="text-xs text-[#71717a] text-right tabular-nums">{formatDate(c.lastDate)}</div>
+          <div className="text-xs text-[#6b7280] text-right tabular-nums">{formatDate(c.lastDate)}</div>
         </div>
       ))}
     </div>
@@ -997,20 +997,20 @@ function RolesView({ roles, total, onSelect, selected }: RolesViewProps) {
             onClick={() => onSelect(selected === role ? null : role)}
             className={`w-full text-left p-4 rounded-lg border transition-colors ${
               selected === role 
-                ? 'bg-[#22c55e]/5 border-[#22c55e]/30' 
-                : 'bg-[#111113] border-[#1c1c1f] hover:border-[#2a2a2f]'
+                ? 'bg-[#059669]/5 border-[#059669]/30' 
+                : 'bg-[#f9fafb] border-[#e5e7eb] hover:border-[#d1d5db]'
             }`}
           >
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-[#fafafa]">{role}</span>
+              <span className="text-sm font-medium text-[#111827]">{role}</span>
               <div className="flex items-center gap-2">
                 <span className="text-lg font-semibold tabular-nums">{count}</span>
-                <span className="text-xs text-[#71717a]">{pct}%</span>
+                <span className="text-xs text-[#6b7280]">{pct}%</span>
               </div>
             </div>
-            <div className="h-1 bg-[#1c1c1f] rounded-full overflow-hidden">
+            <div className="h-1 bg-[#e5e7eb] rounded-full overflow-hidden">
               <div 
-                className="h-full bg-[#22c55e] rounded-full transition-all duration-500"
+                className="h-full bg-[#059669] rounded-full transition-all duration-500"
                 style={{ width: `${barPct}%` }}
               />
             </div>
@@ -1023,8 +1023,8 @@ function RolesView({ roles, total, onSelect, selected }: RolesViewProps) {
 
 function PipelineView({ pipeline, journeys, selectedCandidate, onSelectCandidate, formatDate }: PipelineViewProps) {
   const stages = [
-    { label: 'Round 1', count: pipeline.r1, color: 'bg-[#71717a]' },
-    { label: 'Round 2', count: pipeline.r2, color: 'bg-[#22c55e]' },
+    { label: 'Round 1', count: pipeline.r1, color: 'bg-[#6b7280]' },
+    { label: 'Round 2', count: pipeline.r2, color: 'bg-[#059669]' },
     { label: 'Round 3+', count: pipeline.r3, color: 'bg-amber-500' },
   ];
 
@@ -1033,8 +1033,8 @@ function PipelineView({ pipeline, journeys, selectedCandidate, onSelectCandidate
   return (
     <div className="space-y-8">
       {/* Funnel */}
-      <div className="bg-[#111113] border border-[#1c1c1f] rounded-lg p-6">
-        <h3 className="text-xs font-medium text-[#71717a] uppercase tracking-wider mb-6">Pipeline</h3>
+      <div className="bg-[#f9fafb] border border-[#e5e7eb] rounded-lg p-6">
+        <h3 className="text-xs font-medium text-[#6b7280] uppercase tracking-wider mb-6">Pipeline</h3>
         
         <div className="space-y-4">
           {stages.map((stage, idx) => {
@@ -1044,9 +1044,9 @@ function PipelineView({ pipeline, journeys, selectedCandidate, onSelectCandidate
             
             return (
               <div key={stage.label} className="flex items-center gap-4">
-                <div className="w-16 text-xs text-[#71717a] text-right">{stage.label}</div>
+                <div className="w-16 text-xs text-[#6b7280] text-right">{stage.label}</div>
                 <div className="flex-1">
-                  <div className="h-8 bg-[#1c1c1f] rounded overflow-hidden">
+                  <div className="h-8 bg-[#e5e7eb] rounded overflow-hidden">
                     <div 
                       className={`h-full ${stage.color} rounded flex items-center justify-end pr-3 transition-all duration-700`}
                       style={{ width: `${Math.max(widthPct, 8)}%` }}
@@ -1056,7 +1056,7 @@ function PipelineView({ pipeline, journeys, selectedCandidate, onSelectCandidate
                   </div>
                 </div>
                 {conversionFromPrev !== null && (
-                  <div className="w-14 text-xs text-[#71717a] tabular-nums">
+                  <div className="w-14 text-xs text-[#6b7280] tabular-nums">
                     {conversionFromPrev}%
                   </div>
                 )}
@@ -1065,25 +1065,25 @@ function PipelineView({ pipeline, journeys, selectedCandidate, onSelectCandidate
           })}
         </div>
 
-        <div className="mt-6 pt-4 border-t border-[#1c1c1f] grid grid-cols-3 gap-4">
+        <div className="mt-6 pt-4 border-t border-[#e5e7eb] grid grid-cols-3 gap-4">
           <div className="text-center">
             <div className="text-2xl font-semibold tabular-nums">{pipeline.r1}</div>
-            <div className="text-xs text-[#71717a]">Total</div>
+            <div className="text-xs text-[#6b7280]">Total</div>
           </div>
           <div className="text-center">
-            <div className="text-2xl font-semibold tabular-nums text-[#22c55e]">{pipeline.r1to2}%</div>
-            <div className="text-xs text-[#71717a]">R1 to R2</div>
+            <div className="text-2xl font-semibold tabular-nums text-[#059669]">{pipeline.r1to2}%</div>
+            <div className="text-xs text-[#6b7280]">R1 to R2</div>
           </div>
           <div className="text-center">
             <div className="text-2xl font-semibold tabular-nums text-amber-400">{pipeline.r2to3}%</div>
-            <div className="text-xs text-[#71717a]">R2 to R3</div>
+            <div className="text-xs text-[#6b7280]">R2 to R3</div>
           </div>
         </div>
       </div>
 
       {/* Journeys */}
       <div>
-        <h3 className="text-xs font-medium text-[#71717a] uppercase tracking-wider mb-4">
+        <h3 className="text-xs font-medium text-[#6b7280] uppercase tracking-wider mb-4">
           Journeys ({journeys.length})
         </h3>
         
@@ -1094,8 +1094,8 @@ function PipelineView({ pipeline, journeys, selectedCandidate, onSelectCandidate
             return (
               <div 
                 key={journey.name}
-                className={`bg-[#111113] border rounded-lg overflow-hidden transition-colors ${
-                  isExpanded ? 'border-[#22c55e]/30' : 'border-[#1c1c1f] hover:border-[#2a2a2f]'
+                className={`bg-[#f9fafb] border rounded-lg overflow-hidden transition-colors ${
+                  isExpanded ? 'border-[#059669]/30' : 'border-[#e5e7eb] hover:border-[#d1d5db]'
                 }`}
               >
                 <button
@@ -1103,21 +1103,21 @@ function PipelineView({ pipeline, journeys, selectedCandidate, onSelectCandidate
                   className="w-full p-4 flex items-center justify-between"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-[#1c1c1f] flex items-center justify-center text-xs font-medium text-[#71717a]">
+                    <div className="w-8 h-8 rounded-full bg-[#e5e7eb] flex items-center justify-center text-xs font-medium text-[#6b7280]">
                       {journey.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
                     </div>
                     <div className="text-left">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-[#fafafa]">{journey.name}</span>
+                        <span className="text-sm font-medium text-[#111827]">{journey.name}</span>
                         <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
                           journey.maxRound >= 3 ? 'bg-amber-500/10 text-amber-400' :
-                          journey.maxRound >= 2 ? 'bg-[#22c55e]/10 text-[#22c55e]' :
-                          'bg-[#1c1c1f] text-[#71717a]'
+                          journey.maxRound >= 2 ? 'bg-[#059669]/10 text-[#059669]' :
+                          'bg-[#e5e7eb] text-[#6b7280]'
                         }`}>
                           R{journey.maxRound}
                         </span>
                       </div>
-                      <div className="text-xs text-[#71717a]">
+                      <div className="text-xs text-[#6b7280]">
                         {journey.clients.join(', ')}
                       </div>
                     </div>
@@ -1129,43 +1129,43 @@ function PipelineView({ pipeline, journeys, selectedCandidate, onSelectCandidate
                         key={i}
                         className={`w-1.5 h-1.5 rounded-full ${
                           int.round >= 3 ? 'bg-amber-400' :
-                          int.round >= 2 ? 'bg-[#22c55e]' :
-                          'bg-[#71717a]'
+                          int.round >= 2 ? 'bg-[#059669]' :
+                          'bg-[#6b7280]'
                         }`}
                       />
                     ))}
                     <ChevronRight 
                       size={14} 
-                      className={`text-[#71717a] transition-transform ${isExpanded ? 'rotate-90' : ''}`} 
+                      className={`text-[#6b7280] transition-transform ${isExpanded ? 'rotate-90' : ''}`} 
                     />
                   </div>
                 </button>
 
                 {isExpanded && (
                   <div className="px-4 pb-4 pt-0">
-                    <div className="relative pl-6 border-l border-[#1c1c1f] ml-4 space-y-3">
+                    <div className="relative pl-6 border-l border-[#e5e7eb] ml-4 space-y-3">
                       {journey.interviews.map((int, i) => (
                         <div key={i} className="relative">
                           <div className={`absolute -left-[13px] w-2 h-2 rounded-full ${
                             int.round >= 3 ? 'bg-amber-400' :
-                            int.round >= 2 ? 'bg-[#22c55e]' :
-                            'bg-[#71717a]'
+                            int.round >= 2 ? 'bg-[#059669]' :
+                            'bg-[#6b7280]'
                           }`} />
-                          <div className="bg-[#0a0a0a] rounded p-3">
+                          <div className="bg-[#ffffff] rounded p-3">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <span className="text-sm text-[#fafafa]">{int.client}</span>
+                                <span className="text-sm text-[#111827]">{int.client}</span>
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded ${
                                   int.round >= 3 ? 'bg-amber-500/10 text-amber-400' :
-                                  int.round >= 2 ? 'bg-[#22c55e]/10 text-[#22c55e]' :
-                                  'bg-[#1c1c1f] text-[#71717a]'
+                                  int.round >= 2 ? 'bg-[#059669]/10 text-[#059669]' :
+                                  'bg-[#e5e7eb] text-[#6b7280]'
                                 }`}>
                                   R{int.round}
                                 </span>
                               </div>
-                              <span className="text-xs text-[#71717a] tabular-nums">{formatDate(int.date)}</span>
+                              <span className="text-xs text-[#6b7280] tabular-nums">{formatDate(int.date)}</span>
                             </div>
-                            <div className="text-xs text-[#71717a] mt-1">{int.role}</div>
+                            <div className="text-xs text-[#6b7280] mt-1">{int.role}</div>
                           </div>
                         </div>
                       ))}

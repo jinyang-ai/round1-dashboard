@@ -1,23 +1,23 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #0a0a0a;
-  --color-surface: #111113;
-  --color-border: #1c1c1f;
-  --color-foreground: #fafafa;
-  --color-muted: #71717a;
-  --color-accent: #22c55e;
+  --color-background: #ffffff;
+  --color-surface: #f9fafb;
+  --color-border: #e5e7eb;
+  --color-foreground: #111827;
+  --color-muted: #6b7280;
+  --color-accent: #059669;
   --font-family-sans: var(--font-geist), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-family-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
 :root {
-  --foreground: #fafafa;
-  --background: #0a0a0a;
-  --surface: #111113;
-  --border: #1c1c1f;
-  --muted: #71717a;
-  --accent: #22c55e;
+  --foreground: #111827;
+  --background: #ffffff;
+  --surface: #f9fafb;
+  --border: #e5e7eb;
+  --muted: #6b7280;
+  --accent: #059669;
 }
 
 body {
@@ -149,7 +149,7 @@ body {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #2a2a2f;
+  background: #9ca3af;
 }
 
 /* Focus styles */
@@ -160,8 +160,8 @@ body {
 
 /* Selection */
 ::selection {
-  background: rgba(34, 197, 94, 0.2);
-  color: #fff;
+  background: rgba(5, 150, 105, 0.15);
+  color: inherit;
 }
 
 /* Monospace numbers */
