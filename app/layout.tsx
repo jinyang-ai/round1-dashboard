@@ -1,9 +1,20 @@
 import type { Metadata } from 'next';
+import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 
+const geist = Geist({
+  subsets: ['latin'],
+  variable: '--font-geist',
+});
+
+const geistMono = Geist_Mono({
+  subsets: ['latin'],
+  variable: '--font-geist-mono',
+});
+
 export const metadata: Metadata = {
-  title: 'Round1 Dashboard | Grapevine',
-  description: 'Live operational dashboard for Round1 interview coordination',
+  title: 'Round1 Dashboard',
+  description: 'Interview coordination dashboard',
 };
 
 export default function RootLayout({
@@ -12,7 +23,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${geist.variable} ${geistMono.variable}`}>
       <body>{children}</body>
     </html>
   );

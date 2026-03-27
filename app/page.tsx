@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef, Component, ErrorInfo, ReactNode } from 'react';
 import { 
   Video, Clock, Search, Copy, Check, Zap, TrendingUp, Users, RefreshCw,
-  Calendar, Building2, Briefcase, ChevronRight, Filter, X, ArrowUp, ArrowDown,
-  Flame, Target, AlertCircle, Star, GitBranch, ArrowRight, Circle
+  Calendar, Building2, Briefcase, ChevronRight, X, ArrowUp, ArrowDown,
+  GitBranch, ArrowRight, Circle, Wifi, WifiOff
 } from 'lucide-react';
 
 interface Interview {
@@ -21,8 +21,118 @@ interface Interview {
   raw_json: any;
 }
 
+interface Toast {
+  id: string;
+  message: string;
+  type: 'info' | 'success' | 'warning';
+  exiting?: boolean;
+}
+
+// View component interfaces
+interface TimelineViewProps {
+  interviews: Interview[];
+  formatDate: (s: string) => string;
+  formatTime: (s: string) => string;
+  copyToClipboard: (text: string, id: string) => Promise<void>;
+  copiedId: string | null;
+  onClientClick: (client: string | null) => void;
+}
+
+interface ClientsViewProps {
+  clients: Array<{ name: string; count: number; candidates: number; roles: string[] }>;
+  interviews: Interview[];
+  onSelect: (client: string | null) => void;
+  selected: string | null;
+}
+
+interface CandidatesViewProps {
+  candidates: Array<{
+    name: string;
+    count: number;
+    clients: string[];
+    roles: string[];
+    maxRound: number;
+    lastDate: string;
+  }>;
+  formatDate: (s: string) => string;
+}
+
+interface RolesViewProps {
+  roles: Array<[string, number]>;
+  total: number;
+  onSelect: (role: string | null) => void;
+  selected: string | null;
+}
+
+interface PipelineViewProps {
+  pipeline: {
+    r1: number;
+    r2: number;
+    r3: number;
+    r1Only: number;
+    r1to2: number;
+    r2to3: number;
+  };
+  journeys: Array<{
+    name: string;
+    interviews: Array<{ date: string; client: string; role: string; round: number; title: string }>;
+    clients: string[];
+    maxRound: number;
+  }>;
+  selectedCandidate: string | null;
+  onSelectCandidate: (candidate: string | null) => void;
+  formatDate: (s: string) => string;
+}
+
+// Error Boundary for graceful error handling
+interface ErrorBoundaryProps {
+  children: ReactNode;
+  fallback?: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('Dashboard error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback || (
+        <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+          <div className="text-center p-6">
+            <div className="text-[#fafafa] text-lg font-medium mb-2">Something went wrong</div>
+            <div className="text-[#71717a] text-sm mb-4">{this.state.error?.message || 'An unexpected error occurred'}</div>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-[#22c55e] text-[#0a0a0a] text-sm font-medium rounded-lg hover:bg-[#22c55e]/90 transition-colors"
+            >
+              Reload Page
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 // Animated number counter hook
-function useAnimatedNumber(value: number, duration: number = 500) {
+function useAnimatedNumber(value: number, duration: number = 400) {
   const [displayValue, setDisplayValue] = useState(0);
   const prevValue = useRef(0);
 
@@ -34,7 +144,7 @@ function useAnimatedNumber(value: number, duration: number = 500) {
     const animate = (currentTime: number) => {
       const elapsed = currentTime - startTime;
       const progress = Math.min(elapsed / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3); // easeOutCubic
+      const eased = 1 - Math.pow(1 - progress, 3);
       setDisplayValue(Math.round(startValue + diff * eased));
       
       if (progress < 1) {
@@ -63,6 +173,11 @@ export default function DashboardPage() {
   const [parsing, setParsing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const addToastRef = useRef<(message: string, type: Toast['type']) => void>(null);
   
   // Filters
   const [selectedClient, setSelectedClient] = useState<string | null>(null);
@@ -70,6 +185,111 @@ export default function DashboardPage() {
   const [dateRange, setDateRange] = useState<'week' | 'month' | 'quarter' | 'all'>('month');
   const [viewMode, setViewMode] = useState<'timeline' | 'pipeline' | 'clients' | 'candidates' | 'roles'>('timeline');
   const [selectedCandidate, setSelectedCandidate] = useState<string | null>(null);
+
+  // Toast management
+  const addToast = useCallback((message: string, type: Toast['type'] = 'info') => {
+    const id = Math.random().toString(36).slice(2);
+    setToasts(prev => [...prev, { id, message, type }]);
+    
+    // Auto dismiss after 5s
+    setTimeout(() => {
+      setToasts(prev => prev.map(t => t.id === id ? { ...t, exiting: true } : t));
+      setTimeout(() => {
+        setToasts(prev => prev.filter(t => t.id !== id));
+      }, 150);
+    }, 5000);
+  }, []);
+
+  // Keep addToast in a ref to avoid useEffect dependency issues
+  addToastRef.current = addToast;
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts(prev => prev.map(t => t.id === id ? { ...t, exiting: true } : t));
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 150);
+  }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+      if (e.key === 'Escape') {
+        searchRef.current?.blur();
+        setSearchQuery('');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // SSE connection for real-time updates
+  useEffect(() => {
+    let eventSource: EventSource | null = null;
+    let reconnectTimeout: NodeJS.Timeout;
+    let wasConnected = false;
+
+    const connect = () => {
+      try {
+        if (wasConnected) {
+          setIsReconnecting(true);
+        }
+        
+        eventSource = new EventSource('/api/events');
+        
+        eventSource.onopen = () => {
+          if (wasConnected && isReconnecting) {
+            // We successfully reconnected after a disconnect
+            setIsReconnecting(false);
+          }
+          wasConnected = true;
+          setIsConnected(true);
+        };
+
+        eventSource.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'sync') {
+              addToastRef.current?.(`Synced ${data.count || 'new'} interviews`, 'success');
+              loadData();
+            } else if (data.type === 'ping') {
+              // Keep alive, no action needed
+            }
+          } catch (e) {
+            // Ignore parse errors
+          }
+        };
+
+        eventSource.onerror = () => {
+          const wasConnectedBefore = wasConnected;
+          setIsConnected(false);
+          setIsReconnecting(true);
+          eventSource?.close();
+          
+          // Show toast only on first disconnect
+          if (wasConnectedBefore) {
+            addToastRef.current?.('Connection lost, reconnecting...', 'warning');
+          }
+          
+          // Reconnect after 5s
+          reconnectTimeout = setTimeout(connect, 5000);
+        };
+      } catch (e) {
+        setIsConnected(false);
+        setIsReconnecting(false);
+      }
+    };
+
+    connect();
+
+    return () => {
+      eventSource?.close();
+      clearTimeout(reconnectTimeout);
+    };
+  }, []); // No dependencies - uses ref for addToast
 
   useEffect(() => {
     loadData();
@@ -94,8 +314,10 @@ export default function DashboardPage() {
     try {
       await fetch('/api/sync', { method: 'POST' });
       await loadData();
+      addToast('Calendar synced', 'success');
     } catch (e) {
       console.error('Sync failed:', e);
+      addToast('Sync failed', 'warning');
     } finally {
       setSyncing(false);
     }
@@ -106,10 +328,11 @@ export default function DashboardPage() {
     try {
       const res = await fetch('/api/parse-interviews', { method: 'POST' });
       const data = await res.json();
-      console.log('Parse result:', data);
       await loadData();
+      addToast(`Parsed ${data.processed || 0} interviews`, 'success');
     } catch (e) {
       console.error('Parse failed:', e);
+      addToast('Parse failed', 'warning');
     } finally {
       setParsing(false);
     }
@@ -213,59 +436,31 @@ export default function DashboardPage() {
       }))
       .sort((a, b) => b.count - a.count);
 
-    // Daily breakdown
-    const daily: Record<string, number> = {};
-    all.forEach(i => {
-      const d = i.start_time.slice(0, 10);
-      daily[d] = (daily[d] || 0) + 1;
-    });
-
-    // Insights
-    const insights: { icon: any; text: string; type: 'hot' | 'trend' | 'alert' | 'star' }[] = [];
+    // Insights - simplified
+    const insights: { text: string; type: 'activity' | 'trend' | 'highlight' }[] = [];
     
-    // Top client insight
     if (clientList[0] && clientList[0].name !== 'Unknown') {
-      const pct = Math.round((clientList[0].count / all.length) * 100);
       insights.push({ 
-        icon: Flame, 
-        text: `${clientList[0].name} is most active — ${clientList[0].count} interviews (${pct}% of total)`,
-        type: 'hot'
+        text: `${clientList[0].name} leads with ${clientList[0].count} interviews`,
+        type: 'activity'
       });
     }
 
-    // Growth/decline
     if (prev.length > 0) {
       const change = Math.round(((all.length - prev.length) / prev.length) * 100);
-      if (change > 10) {
-        insights.push({ icon: TrendingUp, text: `Activity up ${change}% vs previous period`, type: 'trend' });
-      } else if (change < -10) {
-        insights.push({ icon: AlertCircle, text: `Activity down ${Math.abs(change)}% vs previous period`, type: 'alert' });
+      if (Math.abs(change) > 10) {
+        insights.push({ 
+          text: `Activity ${change > 0 ? 'up' : 'down'} ${Math.abs(change)}% vs prior`,
+          type: 'trend'
+        });
       }
     }
 
-    // Top role
-    if (roleList[0]) {
-      const pct = Math.round((roleList[0][1] / all.length) * 100);
-      insights.push({ icon: Target, text: `${roleList[0][0]} is top role — ${pct}% of interviews`, type: 'trend' });
-    }
-
-    // Multi-round candidates
     const advancing = candidateList.filter(c => c.maxRound >= 2);
     if (advancing.length > 0) {
       insights.push({ 
-        icon: Star, 
-        text: `${advancing.length} candidates advancing (Round 2+): ${advancing.slice(0, 3).map(c => c.name).join(', ')}${advancing.length > 3 ? '...' : ''}`,
-        type: 'star'
-      });
-    }
-
-    // Multi-company candidates
-    const multiCompany = candidateList.filter(c => c.clients.length > 1);
-    if (multiCompany.length > 0) {
-      insights.push({
-        icon: Users,
-        text: `${multiCompany.length} candidates interviewing at multiple companies`,
-        type: 'trend'
+        text: `${advancing.length} candidates in Round 2+`,
+        type: 'highlight'
       });
     }
 
@@ -279,7 +474,6 @@ export default function DashboardPage() {
       r2to3: 0,
     };
     
-    // Track by candidate-client pairs for accurate funnel
     const candidateClientRounds: Record<string, Set<number>> = {};
     all.forEach(i => {
       if (!i.candidate_name || !i.client) return;
@@ -299,7 +493,7 @@ export default function DashboardPage() {
     pipeline.r1to2 = pipeline.r1 > 0 ? Math.round((pipeline.r2 / pipeline.r1) * 100) : 0;
     pipeline.r2to3 = pipeline.r2 > 0 ? Math.round((pipeline.r3 / pipeline.r2) * 100) : 0;
 
-    // Candidate journeys (detailed timeline per candidate)
+    // Candidate journeys
     const journeys: Record<string, { 
       name: string; 
       interviews: { date: string; client: string; role: string; round: number; title: string }[];
@@ -327,7 +521,6 @@ export default function DashboardPage() {
       if (round > journeys[name].maxRound) journeys[name].maxRound = round;
     });
 
-    // Sort interviews within each journey
     Object.values(journeys).forEach(j => {
       j.interviews.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     });
@@ -344,7 +537,6 @@ export default function DashboardPage() {
       clientList, 
       roleList, 
       candidateList,
-      daily,
       insights,
       pipeline,
       journeyList
@@ -363,8 +555,8 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
-        <div className="text-zinc-500">Loading Round1...</div>
+      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+        <div className="text-[#71717a]">Loading...</div>
       </div>
     );
   }
@@ -372,37 +564,42 @@ export default function DashboardPage() {
   const hasFilters = selectedClient || selectedRole || searchQuery;
 
   return (
-    <div className="min-h-screen bg-[#09090b] text-zinc-100">
+    <ErrorBoundary>
+    <div className="min-h-screen bg-[#0a0a0a] text-[#fafafa]">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-[#09090b]/95 backdrop-blur border-b border-zinc-800/50">
-        <div className="max-w-[1600px] mx-auto px-6 py-3">
-          <div className="flex items-center justify-between gap-6">
-            {/* Logo & Title */}
+      <header className="sticky top-0 z-50 bg-[#0a0a0a]/95 backdrop-blur-sm border-b border-[#1c1c1f]">
+        <div className="max-w-[1400px] mx-auto px-6 py-4">
+          <div className="flex items-center justify-between gap-8">
+            {/* Logo */}
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center">
-                <Zap size={16} className="text-black" />
-              </div>
-              <div>
-                <h1 className="text-lg font-bold">Round1</h1>
-                <p className="text-[10px] text-zinc-600 uppercase tracking-wider">Interview Intelligence</p>
+              <h1 className="text-lg font-semibold tracking-tight">Round1</h1>
+              {/* Live indicator */}
+              <div className="flex items-center gap-1.5" title={isConnected ? 'Connected' : isReconnecting ? 'Reconnecting...' : 'Disconnected'}>
+                <div className={`w-1.5 h-1.5 rounded-full ${
+                  isConnected ? 'bg-[#22c55e] animate-pulse-dot' : 
+                  isReconnecting ? 'bg-amber-500 animate-pulse' : 
+                  'bg-[#71717a]'
+                }`} />
+                <span className="text-[10px] text-[#71717a] uppercase tracking-wider">
+                  {isConnected ? 'Live' : isReconnecting ? 'Reconnecting...' : 'Offline'}
+                </span>
               </div>
             </div>
 
             {/* Search */}
-            <div className="flex-1 max-w-md relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" />
+            <div className="flex-1 max-w-sm relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#71717a]" />
               <input
+                ref={searchRef}
                 type="text"
-                placeholder="Search candidates, clients..."
+                placeholder="Search..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-sm placeholder-zinc-600 focus:outline-none focus:border-zinc-700"
+                className="w-full pl-9 pr-12 py-2 bg-[#111113] border border-[#1c1c1f] rounded-lg text-sm placeholder-[#71717a] focus:outline-none focus:border-[#22c55e]/50 transition-colors"
               />
-              {searchQuery && (
-                <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white">
-                  <X size={14} />
-                </button>
-              )}
+              <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-[#71717a] bg-[#1c1c1f] px-1.5 py-0.5 rounded">
+                ⌘K
+              </kbd>
             </div>
 
             {/* Actions */}
@@ -410,7 +607,7 @@ export default function DashboardPage() {
               <button
                 onClick={syncCalendar}
                 disabled={syncing}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700 disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-[#1c1c1f] text-[#71717a] hover:text-[#fafafa] hover:border-[#2a2a2f] disabled:opacity-50 transition-colors"
               >
                 <RefreshCw size={12} className={syncing ? 'animate-spin' : ''} />
                 Sync
@@ -418,10 +615,10 @@ export default function DashboardPage() {
               <button
                 onClick={parseWithAI}
                 disabled={parsing}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-[#22c55e] text-[#0a0a0a] hover:bg-[#22c55e]/90 disabled:opacity-50 transition-colors"
               >
                 <Zap size={12} className={parsing ? 'animate-pulse' : ''} />
-                {parsing ? 'Parsing...' : 'AI Parse'}
+                {parsing ? 'Parsing...' : 'Parse'}
               </button>
             </div>
           </div>
@@ -429,24 +626,23 @@ export default function DashboardPage() {
       </header>
 
       {/* Metrics Bar */}
-      <div className="border-b border-zinc-800/50 bg-zinc-900/30">
-        <div className="max-w-[1600px] mx-auto px-6 py-4">
+      <div className="border-b border-[#1c1c1f]">
+        <div className="max-w-[1400px] mx-auto px-6 py-5">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-8">
+            <div className="flex items-center gap-12">
               <Metric label="Interviews" value={analytics.total} prev={analytics.prevTotal} />
               <Metric label="Candidates" value={analytics.uniqueCandidates} />
               <Metric label="Clients" value={analytics.uniqueClients} />
-              <Metric label="Top Role" value={analytics.roleList[0]?.[0] || '—'} small />
             </div>
             
             {/* Date Range */}
-            <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-0.5">
+            <div className="flex items-center gap-1">
               {(['week', 'month', 'quarter', 'all'] as const).map(r => (
                 <button
                   key={r}
                   onClick={() => setDateRange(r)}
-                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                    dateRange === r ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-zinc-300'
+                  className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
+                    dateRange === r ? 'bg-[#111113] text-[#fafafa]' : 'text-[#71717a] hover:text-[#fafafa]'
                   }`}
                 >
                   {r === 'week' ? '7D' : r === 'month' ? '30D' : r === 'quarter' ? '90D' : 'All'}
@@ -459,18 +655,13 @@ export default function DashboardPage() {
 
       {/* Insights Bar */}
       {analytics.insights.length > 0 && (
-        <div className="border-b border-zinc-800/50 bg-zinc-900/20">
-          <div className="max-w-[1600px] mx-auto px-6 py-3">
+        <div className="border-b border-[#1c1c1f]">
+          <div className="max-w-[1400px] mx-auto px-6 py-3">
             <div className="flex items-center gap-6 overflow-x-auto">
               {analytics.insights.map((insight, idx) => (
-                <div key={idx} className="flex items-center gap-2 text-sm whitespace-nowrap">
-                  <insight.icon size={14} className={
-                    insight.type === 'hot' ? 'text-orange-400' :
-                    insight.type === 'alert' ? 'text-red-400' :
-                    insight.type === 'star' ? 'text-yellow-400' :
-                    'text-emerald-400'
-                  } />
-                  <span className="text-zinc-400">{insight.text}</span>
+                <div key={idx} className="flex items-center gap-2 text-sm text-[#71717a] whitespace-nowrap">
+                  <Circle size={4} className="text-[#71717a] fill-current" />
+                  <span>{insight.text}</span>
                 </div>
               ))}
             </div>
@@ -479,10 +670,10 @@ export default function DashboardPage() {
       )}
 
       {/* Main Content */}
-      <main className="max-w-[1600px] mx-auto px-6 py-6">
+      <main className="max-w-[1400px] mx-auto px-6 py-6">
         {/* View Tabs & Active Filters */}
         <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-1 bg-zinc-900/50 border border-zinc-800/50 rounded-lg p-1">
+          <div className="flex items-center gap-1">
             {[
               { id: 'timeline', label: 'Timeline', icon: Calendar },
               { id: 'pipeline', label: 'Pipeline', icon: GitBranch },
@@ -493,10 +684,10 @@ export default function DashboardPage() {
               <button
                 key={tab.id}
                 onClick={() => setViewMode(tab.id as any)}
-                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+                className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
                   viewMode === tab.id 
-                    ? 'bg-zinc-800 text-white shadow-lg shadow-black/20' 
-                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
+                    ? 'bg-[#111113] text-[#fafafa]' 
+                    : 'text-[#71717a] hover:text-[#fafafa]'
                 }`}
               >
                 <tab.icon size={14} />
@@ -516,9 +707,9 @@ export default function DashboardPage() {
               )}
               <button
                 onClick={() => { setSelectedClient(null); setSelectedRole(null); setSearchQuery(''); }}
-                className="text-xs text-zinc-500 hover:text-white"
+                className="text-xs text-[#71717a] hover:text-[#fafafa] transition-colors"
               >
-                Clear all
+                Clear
               </button>
             </div>
           )}
@@ -575,24 +766,48 @@ export default function DashboardPage() {
           />
         )}
       </main>
+
+      {/* Toast Container */}
+      <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+        {toasts.map(toast => (
+          <div
+            key={toast.id}
+            className={`flex items-center gap-3 px-4 py-3 bg-[#111113] border border-[#1c1c1f] rounded-lg shadow-xl ${
+              toast.exiting ? 'toast-exit' : 'toast-enter'
+            }`}
+          >
+            {toast.type === 'success' && <div className="w-1.5 h-1.5 rounded-full bg-[#22c55e]" />}
+            {toast.type === 'warning' && <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />}
+            {toast.type === 'info' && <div className="w-1.5 h-1.5 rounded-full bg-[#71717a]" />}
+            <span className="text-sm text-[#fafafa]">{toast.message}</span>
+            <button
+              onClick={() => dismissToast(toast.id)}
+              className="ml-2 text-[#71717a] hover:text-[#fafafa] transition-colors"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
+    </ErrorBoundary>
   );
 }
 
-function Metric({ label, value, prev, small }: { label: string; value: string | number; prev?: number; small?: boolean }) {
+function Metric({ label, value, prev }: { label: string; value: string | number; prev?: number }) {
   const numValue = typeof value === 'number' ? value : 0;
   const animatedValue = useAnimatedNumber(numValue);
   const change = prev ? Math.round(((numValue - prev) / prev) * 100) : null;
   
   return (
-    <div className="group">
-      <div className={`font-bold text-white transition-transform group-hover:scale-105 ${small ? 'text-sm' : 'text-2xl tabular-nums'}`}>
+    <div>
+      <div className="text-3xl font-semibold tabular-nums tracking-tight">
         {typeof value === 'number' ? animatedValue.toLocaleString() : value}
       </div>
-      <div className="flex items-center gap-1.5">
-        <span className="text-[10px] text-zinc-500 uppercase tracking-wider">{label}</span>
+      <div className="flex items-center gap-2 mt-0.5">
+        <span className="text-xs text-[#71717a]">{label}</span>
         {change !== null && change !== 0 && (
-          <span className={`flex items-center text-[10px] transition-colors ${change > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+          <span className={`flex items-center text-xs ${change > 0 ? 'text-[#22c55e]' : 'text-[#71717a]'}`}>
             {change > 0 ? <ArrowUp size={10} /> : <ArrowDown size={10} />}
             {Math.abs(change)}%
           </span>
@@ -604,77 +819,74 @@ function Metric({ label, value, prev, small }: { label: string; value: string | 
 
 function FilterPill({ label, onClear }: { label: string; onClear: () => void }) {
   return (
-    <div className="flex items-center gap-1.5 px-2 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-md text-xs text-emerald-400">
+    <div className="flex items-center gap-1.5 px-2 py-1 bg-[#111113] border border-[#1c1c1f] rounded text-xs text-[#fafafa]">
       {label}
-      <button onClick={onClear} className="hover:text-white"><X size={12} /></button>
+      <button onClick={onClear} className="text-[#71717a] hover:text-[#fafafa] transition-colors"><X size={12} /></button>
     </div>
   );
 }
 
-function TimelineView({ interviews, formatDate, formatTime, copyToClipboard, copiedId, onClientClick }: any) {
+function TimelineView({ interviews, formatDate, formatTime, copyToClipboard, copiedId, onClientClick }: TimelineViewProps) {
   // Group by date
-  const byDate: Record<string, any[]> = {};
-  interviews.forEach((i: any) => {
+  const byDate: Record<string, Interview[]> = {};
+  interviews.forEach((i) => {
     const d = formatDate(i.start_time);
     if (!byDate[d]) byDate[d] = [];
     byDate[d].push(i);
   });
 
   return (
-    <div className="space-y-6">
-      {Object.entries(byDate).slice(0, 15).map(([date, items], dateIdx) => (
-        <div 
-          key={date}
-          className="animate-in fade-in slide-in-from-bottom-2"
-          style={{ animationDelay: `${dateIdx * 100}ms`, animationFillMode: 'backwards' }}
-        >
-          <div className="flex items-center gap-3 mb-3">
-            <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">{date}</span>
-            <span className="text-[10px] text-zinc-600 bg-zinc-800/50 px-2 py-0.5 rounded-full tabular-nums">{items.length}</span>
-            <div className="flex-1 h-px bg-gradient-to-r from-zinc-800/50 to-transparent" />
-          </div>
-          <div className="grid gap-1">
-            {items.map((i: any, itemIdx: number) => {
+    <div className="space-y-8">
+        {Object.entries(byDate).slice(0, 15).map(([date, items], dateIdx) => (
+          <div 
+            key={date}
+            className="animate-in fade-in slide-in-from-bottom-2"
+            style={{ animationDelay: `${dateIdx * 50}ms`, animationFillMode: 'backwards' }}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <span className="text-xs font-medium text-[#71717a]">{date}</span>
+              <span className="text-xs text-[#71717a] tabular-nums">{items.length}</span>
+            </div>
+            <div className="space-y-1">
+              {items.map((i) => {
               const round = extractRound(i.title);
               const meetLink = i.raw_json?.hangoutLink;
               
               return (
                 <div 
                   key={i.id} 
-                  className="group flex items-center gap-4 px-4 py-2.5 rounded-lg hover:bg-zinc-900/50 transition-all duration-200 hover:translate-x-1"
-                  style={{ animationDelay: `${dateIdx * 100 + itemIdx * 30}ms` }}
+                  className="group grid grid-cols-[60px_1fr_50px_auto] gap-4 items-center px-3 py-2.5 rounded-lg hover:bg-[#111113] transition-colors"
                 >
-                  <div className="w-14 text-right text-sm text-zinc-500 tabular-nums">{formatTime(i.start_time)}</div>
-                  <div className="w-px h-6 bg-zinc-800 group-hover:bg-emerald-500 group-hover:h-8 transition-all duration-200" />
-                  <div className="flex-1 min-w-0">
+                  <div className="text-sm text-[#71717a] tabular-nums">{formatTime(i.start_time)}</div>
+                  <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <button 
                         onClick={() => onClientClick(i.client)}
-                        className="text-sm font-medium text-emerald-400 hover:text-emerald-300 transition-colors"
+                        className="text-sm font-medium text-[#fafafa] hover:text-[#22c55e] transition-colors"
                       >
                         {i.client || 'Unknown'}
                       </button>
                       {i.role_type && (
-                        <span className="text-[10px] text-zinc-600 bg-zinc-800/50 px-1.5 py-0.5 rounded transition-colors group-hover:bg-zinc-800">{i.role_type}</span>
+                        <span className="text-xs text-[#71717a]">{i.role_type}</span>
                       )}
                       {round && round > 1 && (
                         <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                          round >= 3 ? 'text-yellow-400 bg-yellow-500/10' : 'text-emerald-400 bg-emerald-500/10'
+                          round >= 3 ? 'text-amber-400 bg-amber-500/10' : 'text-[#22c55e] bg-[#22c55e]/10'
                         }`}>R{round}</span>
                       )}
                     </div>
-                    <div className="text-sm text-zinc-300 truncate">{i.candidate_name || i.title}</div>
+                    <div className="text-sm text-[#71717a] truncate">{i.candidate_name || i.title}</div>
                   </div>
-                  <div className="text-xs text-zinc-600 tabular-nums">{i.duration_mins}m</div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200 translate-x-2 group-hover:translate-x-0">
+                  <div className="text-xs text-[#71717a] tabular-nums text-right">{i.duration_mins}m</div>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() => copyToClipboard(`${i.client} - ${i.candidate_name}`, i.id)}
-                      className="p-1.5 text-zinc-600 hover:text-white hover:bg-zinc-800 rounded transition-colors"
+                      className="p-1.5 text-[#71717a] hover:text-[#fafafa] rounded transition-colors"
                     >
-                      {copiedId === i.id ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                      {copiedId === i.id ? <Check size={12} className="text-[#22c55e]" /> : <Copy size={12} />}
                     </button>
                     {meetLink && (
-                      <a href={meetLink} target="_blank" rel="noopener noreferrer" className="p-1.5 text-blue-400 hover:bg-blue-500/10 rounded transition-colors">
+                      <a href={meetLink} target="_blank" rel="noopener noreferrer" className="p-1.5 text-[#71717a] hover:text-[#fafafa] rounded transition-colors">
                         <Video size={12} />
                       </a>
                     )}
@@ -689,31 +901,31 @@ function TimelineView({ interviews, formatDate, formatTime, copyToClipboard, cop
   );
 }
 
-function ClientsView({ clients, interviews, onSelect, selected }: any) {
+function ClientsView({ clients, onSelect, selected }: ClientsViewProps) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {clients.filter((c: any) => c.name !== 'Unknown').map((client: any, idx: number) => (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+      {clients.filter((c) => c.name !== 'Unknown').map((client, idx) => (
         <button
           key={client.name}
           onClick={() => onSelect(selected === client.name ? null : client.name)}
-          className={`text-left p-5 rounded-xl border transition-all duration-300 animate-in fade-in slide-in-from-bottom-2 ${
+          className={`text-left p-4 rounded-lg border transition-colors ${
             selected === client.name 
-              ? 'bg-emerald-500/10 border-emerald-500/30 scale-[1.02] shadow-lg shadow-emerald-500/10' 
-              : 'bg-zinc-900/30 border-zinc-800/50 hover:border-zinc-700/50 hover:bg-zinc-900/50 hover:scale-[1.01]'
+              ? 'bg-[#22c55e]/5 border-[#22c55e]/30' 
+              : 'bg-[#111113] border-[#1c1c1f] hover:border-[#2a2a2f]'
           }`}
-          style={{ animationDelay: `${idx * 50}ms`, animationFillMode: 'backwards' }}
+          style={{ animationDelay: `${idx * 30}ms` }}
         >
-          <div className="flex items-start justify-between mb-3">
-            <h3 className="text-base font-semibold text-white">{client.name}</h3>
-            <div className="text-2xl font-bold text-emerald-400 tabular-nums">{client.count}</div>
+          <div className="flex items-start justify-between mb-2">
+            <h3 className="text-sm font-medium text-[#fafafa]">{client.name}</h3>
+            <div className="text-xl font-semibold tabular-nums">{client.count}</div>
           </div>
-          <div className="text-sm text-zinc-500 mb-3">{client.candidates} candidates</div>
-          <div className="flex flex-wrap gap-1.5">
-            {client.roles.slice(0, 3).map((r: string) => (
-              <span key={r} className="text-[10px] text-zinc-400 bg-zinc-800/80 px-2 py-0.5 rounded-full">{r}</span>
+          <div className="text-xs text-[#71717a] mb-2">{client.candidates} candidates</div>
+          <div className="flex flex-wrap gap-1">
+            {client.roles.slice(0, 2).map((r: string) => (
+              <span key={r} className="text-[10px] text-[#71717a] bg-[#1c1c1f] px-1.5 py-0.5 rounded">{r}</span>
             ))}
-            {client.roles.length > 3 && (
-              <span className="text-[10px] text-zinc-600">+{client.roles.length - 3}</span>
+            {client.roles.length > 2 && (
+              <span className="text-[10px] text-[#71717a]">+{client.roles.length - 2}</span>
             )}
           </div>
         </button>
@@ -722,66 +934,60 @@ function ClientsView({ clients, interviews, onSelect, selected }: any) {
   );
 }
 
-function CandidatesView({ candidates, formatDate }: any) {
+function CandidatesView({ candidates, formatDate }: CandidatesViewProps) {
   return (
-    <div className="space-y-2">
-      {candidates.slice(0, 50).map((c: any, idx: number) => (
+    <div className="space-y-1">
+      {candidates.slice(0, 50).map((c, idx) => (
         <div 
           key={c.name} 
-          className="flex items-center justify-between p-4 bg-zinc-900/30 border border-zinc-800/30 rounded-xl hover:bg-zinc-900/50 hover:border-zinc-700/50 transition-all duration-200 animate-in fade-in slide-in-from-left-2 hover:translate-x-1"
-          style={{ animationDelay: `${idx * 30}ms`, animationFillMode: 'backwards' }}
+          className="group grid grid-cols-[40px_1fr_auto_60px_70px] gap-4 items-center p-3 rounded-lg hover:bg-[#111113] transition-colors"
+          style={{ animationDelay: `${idx * 20}ms` }}
         >
-          <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold ${
-              c.maxRound >= 3 ? 'bg-gradient-to-br from-yellow-600 to-yellow-700 text-yellow-100' :
-              c.maxRound >= 2 ? 'bg-gradient-to-br from-emerald-600 to-emerald-700 text-emerald-100' :
-              'bg-gradient-to-br from-zinc-700 to-zinc-800 text-zinc-400'
-            }`}>
-              {c.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+          <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-medium ${
+            c.maxRound >= 3 ? 'bg-amber-500/10 text-amber-400' :
+            c.maxRound >= 2 ? 'bg-[#22c55e]/10 text-[#22c55e]' :
+            'bg-[#1c1c1f] text-[#71717a]'
+          }`}>
+            {c.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-[#fafafa]">{c.name}</span>
+              {c.maxRound > 1 && (
+                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                  c.maxRound >= 3 ? 'text-amber-400 bg-amber-500/10' : 'text-[#22c55e] bg-[#22c55e]/10'
+                }`}>
+                  R{c.maxRound}
+                </span>
+              )}
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-white">{c.name}</span>
-                {c.maxRound > 1 && (
-                  <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                    c.maxRound >= 3 ? 'text-yellow-400 bg-yellow-500/10' : 'text-emerald-400 bg-emerald-500/10'
-                  }`}>
-                    R{c.maxRound}
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-2 text-xs text-zinc-500">
-                {c.clients.slice(0, 2).map((cl: string) => (
-                  <span key={cl} className="text-emerald-400/80">{cl}</span>
-                ))}
-                {c.clients.length > 2 && <span className="text-zinc-600">+{c.clients.length - 2}</span>}
-              </div>
+            <div className="text-xs text-[#71717a]">
+              {c.clients.slice(0, 2).join(', ')}
+              {c.clients.length > 2 && ` +${c.clients.length - 2}`}
             </div>
           </div>
-          <div className="flex items-center gap-6">
-            <div className="hidden sm:flex gap-1.5">
-              {c.roles.slice(0, 2).map((r: string) => (
-                <span key={r} className="text-[10px] text-zinc-400 bg-zinc-800/80 px-2 py-0.5 rounded-full">{r}</span>
-              ))}
-            </div>
-            <div className="text-right min-w-[60px]">
-              <div className="text-base font-bold text-zinc-200 tabular-nums">{c.count}</div>
-              <div className="text-[10px] text-zinc-600">interviews</div>
-            </div>
-            <div className="text-xs text-zinc-500 w-16 text-right tabular-nums">{formatDate(c.lastDate)}</div>
+          <div className="hidden sm:flex gap-1">
+            {c.roles.slice(0, 2).map((r: string) => (
+              <span key={r} className="text-[10px] text-[#71717a] bg-[#1c1c1f] px-1.5 py-0.5 rounded">{r}</span>
+            ))}
           </div>
+          <div className="text-right">
+            <div className="text-sm font-medium tabular-nums">{c.count}</div>
+            <div className="text-[10px] text-[#71717a]">interviews</div>
+          </div>
+          <div className="text-xs text-[#71717a] text-right tabular-nums">{formatDate(c.lastDate)}</div>
         </div>
       ))}
     </div>
   );
 }
 
-function RolesView({ roles, total, onSelect, selected }: any) {
+function RolesView({ roles, total, onSelect, selected }: RolesViewProps) {
   const maxCount = roles[0]?.[1] || 1;
   
   return (
-    <div className="space-y-3">
-      {roles.map(([role, count]: [string, number], idx: number) => {
+    <div className="space-y-2">
+      {roles.map(([role, count]) => {
         const pct = Math.round((count / total) * 100);
         const barPct = (count / maxCount) * 100;
         
@@ -789,23 +995,22 @@ function RolesView({ roles, total, onSelect, selected }: any) {
           <button
             key={role}
             onClick={() => onSelect(selected === role ? null : role)}
-            className={`w-full text-left p-4 rounded-xl border transition-all duration-300 ${
+            className={`w-full text-left p-4 rounded-lg border transition-colors ${
               selected === role 
-                ? 'bg-emerald-500/10 border-emerald-500/30 scale-[1.02]' 
-                : 'bg-zinc-900/30 border-zinc-800/50 hover:border-zinc-700/50 hover:bg-zinc-900/50'
+                ? 'bg-[#22c55e]/5 border-[#22c55e]/30' 
+                : 'bg-[#111113] border-[#1c1c1f] hover:border-[#2a2a2f]'
             }`}
-            style={{ animationDelay: `${idx * 50}ms` }}
           >
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-white">{role}</span>
+              <span className="text-sm font-medium text-[#fafafa]">{role}</span>
               <div className="flex items-center gap-2">
-                <span className="text-lg font-bold text-zinc-300 tabular-nums">{count}</span>
-                <span className="text-xs text-zinc-600">({pct}%)</span>
+                <span className="text-lg font-semibold tabular-nums">{count}</span>
+                <span className="text-xs text-[#71717a]">{pct}%</span>
               </div>
             </div>
-            <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+            <div className="h-1 bg-[#1c1c1f] rounded-full overflow-hidden">
               <div 
-                className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all duration-700 ease-out"
+                className="h-full bg-[#22c55e] rounded-full transition-all duration-500"
                 style={{ width: `${barPct}%` }}
               />
             </div>
@@ -816,22 +1021,21 @@ function RolesView({ roles, total, onSelect, selected }: any) {
   );
 }
 
-function PipelineView({ pipeline, journeys, selectedCandidate, onSelectCandidate, formatDate }: any) {
+function PipelineView({ pipeline, journeys, selectedCandidate, onSelectCandidate, formatDate }: PipelineViewProps) {
   const stages = [
-    { label: 'Round 1', count: pipeline.r1, color: 'from-blue-500 to-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20' },
-    { label: 'Round 2', count: pipeline.r2, color: 'from-emerald-500 to-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' },
-    { label: 'Round 3+', count: pipeline.r3, color: 'from-yellow-500 to-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/20' },
+    { label: 'Round 1', count: pipeline.r1, color: 'bg-[#71717a]' },
+    { label: 'Round 2', count: pipeline.r2, color: 'bg-[#22c55e]' },
+    { label: 'Round 3+', count: pipeline.r3, color: 'bg-amber-500' },
   ];
 
   const maxCount = Math.max(...stages.map(s => s.count), 1);
 
   return (
     <div className="space-y-8">
-      {/* Funnel Visualization */}
-      <div className="bg-zinc-900/30 border border-zinc-800/50 rounded-2xl p-6">
-        <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-6">Interview Pipeline</h3>
+      {/* Funnel */}
+      <div className="bg-[#111113] border border-[#1c1c1f] rounded-lg p-6">
+        <h3 className="text-xs font-medium text-[#71717a] uppercase tracking-wider mb-6">Pipeline</h3>
         
-        {/* Funnel Bars */}
         <div className="space-y-4">
           {stages.map((stage, idx) => {
             const widthPct = (stage.count / maxCount) * 100;
@@ -839,67 +1043,59 @@ function PipelineView({ pipeline, journeys, selectedCandidate, onSelectCandidate
               stages[idx - 1].count > 0 ? Math.round((stage.count / stages[idx - 1].count) * 100) : 0;
             
             return (
-              <div key={stage.label} className="relative">
-                <div className="flex items-center gap-4">
-                  <div className="w-20 text-right">
-                    <span className="text-xs text-zinc-500">{stage.label}</span>
-                  </div>
-                  <div className="flex-1 relative">
-                    <div className="h-12 bg-zinc-800/30 rounded-lg overflow-hidden">
-                      <div 
-                        className={`h-full bg-gradient-to-r ${stage.color} rounded-lg transition-all duration-1000 ease-out flex items-center justify-end pr-4`}
-                        style={{ width: `${Math.max(widthPct, 8)}%` }}
-                      >
-                        <span className="text-lg font-bold text-white drop-shadow-lg tabular-nums">{stage.count}</span>
-                      </div>
+              <div key={stage.label} className="flex items-center gap-4">
+                <div className="w-16 text-xs text-[#71717a] text-right">{stage.label}</div>
+                <div className="flex-1">
+                  <div className="h-8 bg-[#1c1c1f] rounded overflow-hidden">
+                    <div 
+                      className={`h-full ${stage.color} rounded flex items-center justify-end pr-3 transition-all duration-700`}
+                      style={{ width: `${Math.max(widthPct, 8)}%` }}
+                    >
+                      <span className="text-sm font-semibold text-white tabular-nums">{stage.count}</span>
                     </div>
                   </div>
-                  {conversionFromPrev !== null && (
-                    <div className="w-20 flex items-center gap-1">
-                      <ArrowRight size={12} className="text-zinc-600" />
-                      <span className={`text-sm font-medium ${conversionFromPrev >= 50 ? 'text-emerald-400' : conversionFromPrev >= 25 ? 'text-yellow-400' : 'text-zinc-500'}`}>
-                        {conversionFromPrev}%
-                      </span>
-                    </div>
-                  )}
                 </div>
+                {conversionFromPrev !== null && (
+                  <div className="w-14 text-xs text-[#71717a] tabular-nums">
+                    {conversionFromPrev}%
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
 
-        {/* Conversion Summary */}
-        <div className="mt-8 pt-6 border-t border-zinc-800/50 grid grid-cols-3 gap-4">
+        <div className="mt-6 pt-4 border-t border-[#1c1c1f] grid grid-cols-3 gap-4">
           <div className="text-center">
-            <div className="text-2xl font-bold text-blue-400 tabular-nums">{pipeline.r1}</div>
-            <div className="text-xs text-zinc-500">Total Candidates</div>
+            <div className="text-2xl font-semibold tabular-nums">{pipeline.r1}</div>
+            <div className="text-xs text-[#71717a]">Total</div>
           </div>
           <div className="text-center">
-            <div className="text-2xl font-bold text-emerald-400 tabular-nums">{pipeline.r1to2}%</div>
-            <div className="text-xs text-zinc-500">R1 → R2 Rate</div>
+            <div className="text-2xl font-semibold tabular-nums text-[#22c55e]">{pipeline.r1to2}%</div>
+            <div className="text-xs text-[#71717a]">R1 to R2</div>
           </div>
           <div className="text-center">
-            <div className="text-2xl font-bold text-yellow-400 tabular-nums">{pipeline.r2to3}%</div>
-            <div className="text-xs text-zinc-500">R2 → R3 Rate</div>
+            <div className="text-2xl font-semibold tabular-nums text-amber-400">{pipeline.r2to3}%</div>
+            <div className="text-xs text-[#71717a]">R2 to R3</div>
           </div>
         </div>
       </div>
 
-      {/* Candidate Journeys */}
+      {/* Journeys */}
       <div>
-        <h3 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-4">
-          Candidate Journeys ({journeys.length})
+        <h3 className="text-xs font-medium text-[#71717a] uppercase tracking-wider mb-4">
+          Journeys ({journeys.length})
         </h3>
         
-        <div className="space-y-3">
-          {journeys.slice(0, 20).map((journey: any, idx: number) => {
+        <div className="space-y-2">
+          {journeys.slice(0, 20).map((journey) => {
             const isExpanded = selectedCandidate === journey.name;
             
             return (
               <div 
                 key={journey.name}
-                className={`bg-zinc-900/30 border rounded-xl overflow-hidden transition-all duration-300 ${
-                  isExpanded ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-zinc-800/50 hover:border-zinc-700/50'
+                className={`bg-[#111113] border rounded-lg overflow-hidden transition-colors ${
+                  isExpanded ? 'border-[#22c55e]/30' : 'border-[#1c1c1f] hover:border-[#2a2a2f]'
                 }`}
               >
                 <button
@@ -907,75 +1103,69 @@ function PipelineView({ pipeline, journeys, selectedCandidate, onSelectCandidate
                   className="w-full p-4 flex items-center justify-between"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-zinc-700 to-zinc-800 flex items-center justify-center text-sm font-semibold text-zinc-400">
+                    <div className="w-8 h-8 rounded-full bg-[#1c1c1f] flex items-center justify-center text-xs font-medium text-[#71717a]">
                       {journey.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
                     </div>
                     <div className="text-left">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-white">{journey.name}</span>
+                        <span className="text-sm font-medium text-[#fafafa]">{journey.name}</span>
                         <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                          journey.maxRound >= 3 ? 'bg-yellow-500/10 text-yellow-400' :
-                          journey.maxRound >= 2 ? 'bg-emerald-500/10 text-emerald-400' :
-                          'bg-blue-500/10 text-blue-400'
+                          journey.maxRound >= 3 ? 'bg-amber-500/10 text-amber-400' :
+                          journey.maxRound >= 2 ? 'bg-[#22c55e]/10 text-[#22c55e]' :
+                          'bg-[#1c1c1f] text-[#71717a]'
                         }`}>
                           R{journey.maxRound}
                         </span>
                       </div>
-                      <div className="text-xs text-zinc-500">
-                        {journey.clients.join(', ')} · {journey.interviews.length} interviews
+                      <div className="text-xs text-[#71717a]">
+                        {journey.clients.join(', ')}
                       </div>
                     </div>
                   </div>
                   
-                  {/* Mini Journey Dots */}
-                  <div className="flex items-center gap-1">
-                    {journey.interviews.slice(0, 5).map((int: any, i: number) => (
+                  <div className="flex items-center gap-2">
+                    {journey.interviews.slice(0, 4).map((int, i) => (
                       <div 
                         key={i}
-                        className={`w-2 h-2 rounded-full ${
-                          int.round >= 3 ? 'bg-yellow-400' :
-                          int.round >= 2 ? 'bg-emerald-400' :
-                          'bg-blue-400'
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          int.round >= 3 ? 'bg-amber-400' :
+                          int.round >= 2 ? 'bg-[#22c55e]' :
+                          'bg-[#71717a]'
                         }`}
-                        title={`R${int.round}: ${int.client}`}
                       />
                     ))}
-                    {journey.interviews.length > 5 && (
-                      <span className="text-[10px] text-zinc-600">+{journey.interviews.length - 5}</span>
-                    )}
                     <ChevronRight 
-                      size={16} 
-                      className={`text-zinc-600 transition-transform duration-300 ml-2 ${isExpanded ? 'rotate-90' : ''}`} 
+                      size={14} 
+                      className={`text-[#71717a] transition-transform ${isExpanded ? 'rotate-90' : ''}`} 
                     />
                   </div>
                 </button>
 
-                {/* Expanded Timeline */}
                 {isExpanded && (
                   <div className="px-4 pb-4 pt-0">
-                    <div className="relative pl-6 border-l-2 border-zinc-700/50 ml-5 space-y-4">
-                      {journey.interviews.map((int: any, i: number) => (
+                    <div className="relative pl-6 border-l border-[#1c1c1f] ml-4 space-y-3">
+                      {journey.interviews.map((int, i) => (
                         <div key={i} className="relative">
-                          <div className={`absolute -left-[25px] w-3 h-3 rounded-full border-2 ${
-                            int.round >= 3 ? 'bg-yellow-400 border-yellow-400' :
-                            int.round >= 2 ? 'bg-emerald-400 border-emerald-400' :
-                            'bg-blue-400 border-blue-400'
+                          <div className={`absolute -left-[13px] w-2 h-2 rounded-full ${
+                            int.round >= 3 ? 'bg-amber-400' :
+                            int.round >= 2 ? 'bg-[#22c55e]' :
+                            'bg-[#71717a]'
                           }`} />
-                          <div className="bg-zinc-800/30 rounded-lg p-3">
+                          <div className="bg-[#0a0a0a] rounded p-3">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium text-emerald-400">{int.client}</span>
-                                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                                  int.round >= 3 ? 'bg-yellow-500/10 text-yellow-400' :
-                                  int.round >= 2 ? 'bg-emerald-500/10 text-emerald-400' :
-                                  'bg-blue-500/10 text-blue-400'
+                                <span className="text-sm text-[#fafafa]">{int.client}</span>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                  int.round >= 3 ? 'bg-amber-500/10 text-amber-400' :
+                                  int.round >= 2 ? 'bg-[#22c55e]/10 text-[#22c55e]' :
+                                  'bg-[#1c1c1f] text-[#71717a]'
                                 }`}>
-                                  Round {int.round}
+                                  R{int.round}
                                 </span>
                               </div>
-                              <span className="text-xs text-zinc-500">{formatDate(int.date)}</span>
+                              <span className="text-xs text-[#71717a] tabular-nums">{formatDate(int.date)}</span>
                             </div>
-                            <div className="text-xs text-zinc-400 mt-1">{int.role}</div>
+                            <div className="text-xs text-[#71717a] mt-1">{int.role}</div>
                           </div>
                         </div>
                       ))}

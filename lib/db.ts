@@ -296,3 +296,121 @@ export async function getRoleTypes() {
   const roles = new Set(data?.map((i) => i.role_type) || []);
   return Array.from(roles).sort();
 }
+
+// Sync state management
+export interface SyncState {
+  id: string;
+  sync_token: string | null;
+  last_synced_at: string | null;
+  watch_channel_id: string | null;
+  watch_resource_id: string | null;
+  watch_expiration: string | null;
+}
+
+export async function getSyncState(): Promise<SyncState | null> {
+  const { data, error } = await supabaseAdmin
+    .from('sync_state')
+    .select('*')
+    .eq('id', 'default')
+    .single();
+  
+  if (error) {
+    // Table might not exist yet
+    if (error.code === 'PGRST116' || error.code === '42P01') {
+      return null;
+    }
+    console.error('Error getting sync state:', error);
+    return null;
+  }
+  
+  return data;
+}
+
+export async function saveSyncState(updates: Partial<SyncState>): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from('sync_state')
+    .upsert({
+      id: 'default',
+      ...updates,
+      updated_at: new Date().toISOString(),
+    }, {
+      onConflict: 'id',
+    });
+  
+  if (error) {
+    console.error('Error saving sync state:', error);
+    throw error;
+  }
+}
+
+export async function saveWatchInfo(
+  channelId: string,
+  resourceId: string,
+  expiration: Date
+): Promise<void> {
+  await saveSyncState({
+    watch_channel_id: channelId,
+    watch_resource_id: resourceId,
+    watch_expiration: expiration.toISOString(),
+  });
+}
+
+// Delete an interview (for handling cancelled events)
+export async function deleteInterview(calendarEventId: string): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from('interviews')
+    .delete()
+    .eq('calendar_event_id', calendarEventId);
+  
+  if (error) {
+    console.error('Error deleting interview:', error);
+    throw error;
+  }
+}
+
+// Process incremental changes (handles both upserts and deletes)
+export async function processIncrementalChanges(events: any[]): Promise<{
+  added: number;
+  updated: number;
+  deleted: number;
+  skipped: number;
+}> {
+  let added = 0;
+  let updated = 0;
+  let deleted = 0;
+  let skipped = 0;
+  
+  for (const event of events) {
+    try {
+      // Check if event was deleted
+      if (event.status === 'cancelled') {
+        await deleteInterview(event.id);
+        deleted++;
+        continue;
+      }
+      
+      // Check if event exists
+      const { data: existing } = await supabaseAdmin
+        .from('interviews')
+        .select('id')
+        .eq('calendar_event_id', event.id)
+        .single();
+      
+      const result = await upsertInterview(event);
+      if (result) {
+        if (existing) {
+          updated++;
+        } else {
+          added++;
+        }
+      } else {
+        skipped++;
+      }
+    } catch (error) {
+      console.error(`Error processing event ${event.id}:`, error);
+      skipped++;
+    }
+  }
+  
+  return { added, updated, deleted, skipped };
+}
