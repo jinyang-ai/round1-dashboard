@@ -15,13 +15,15 @@ export async function POST(request: NextRequest) {
     
     const calendarId = process.env.GOOGLE_CALENDAR_ID || 'round1@grapevine.in';
     
-    // Fetch last 7 months of events
+    // Fetch from 7 months ago to 2 weeks into the future
     const now = new Date();
     const sevenMonthsAgo = new Date();
     sevenMonthsAgo.setMonth(now.getMonth() - 7);
+    const twoWeeksAhead = new Date();
+    twoWeeksAhead.setDate(now.getDate() + 14);
     
     console.log('Fetching calendar events...');
-    const events = await fetchCalendarEvents(calendarId, sevenMonthsAgo, now);
+    const events = await fetchCalendarEvents(calendarId, sevenMonthsAgo, twoWeeksAhead);
     console.log(`Fetched ${events.length} events`);
     
     // Bulk upsert to database
